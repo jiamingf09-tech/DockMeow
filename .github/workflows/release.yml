@@ -115,12 +115,28 @@ jobs:
           echo "Created dist/installers/${DMG_NAME}"
 
       # ── Package: Windows Inno Setup ───────────────────────────────────────
-      - name: Package Windows installer
+      - name: Install Inno Setup
         if: runner.os == 'Windows'
         shell: cmd
+        run: choco install innosetup -y
+
+      - name: Download Chinese language file for Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          choco install innosetup -y
-          iscc packaging\windows\installer.iss
+          $url  = "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl"
+          $dest = "C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl"
+          Invoke-WebRequest -Uri $url -OutFile $dest
+          if (-not (Test-Path $dest)) {
+            Write-Error "Failed to download ChineseSimplified.isl"
+            exit 1
+          }
+          Write-Host "ChineseSimplified.isl downloaded successfully"
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: iscc packaging\windows\installer.iss
 
       # ── Package: Linux AppImage ───────────────────────────────────────────
       - name: Package Linux AppImage
