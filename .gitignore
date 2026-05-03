@@ -33,3 +33,7 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# fpocket test output & staging dirs
+examples/*_out/
+src/dockmeow/bundled/fpocket/linux_x64/

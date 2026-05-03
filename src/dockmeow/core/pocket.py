@@ -148,8 +148,14 @@ def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
     if not binary.exists():
         raise FileNotFoundError(f"fpocket binary not found: {binary}")
 
-    out_dir = work_dir / f"{receptor_pdb.stem}_out"
-    cmd = [str(binary), "-f", str(receptor_pdb)]
+    # fpocket writes output next to the input PDB, not in cwd.
+    # Copy the PDB into work_dir so output lands there (keeps temp directories clean).
+    import shutil as _shutil
+    local_pdb = work_dir / receptor_pdb.name
+    _shutil.copy2(receptor_pdb, local_pdb)
+
+    out_dir = work_dir / f"{local_pdb.stem}_out"
+    cmd = [str(binary), "-f", str(local_pdb)]
 
     _log.debug("Running fpocket: %s", " ".join(cmd))
     try:
@@ -174,8 +180,14 @@ def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
             "已自动使用全蛋白盲对接盒子。",
         )
 
-    # fpocket writes <stem>_out/<stem>_pockets.pqr with pocket atom coords
-    pqr_files = sorted(out_dir.glob("pocket*_atm.pdb")) if out_dir.exists() else []
+    # fpocket 4.x writes <stem>_out/pockets/pocket*_atm.pdb (individual pocket files)
+    # Older versions placed them directly in <stem>_out/ — check both layouts.
+    if out_dir.exists():
+        pqr_files = sorted((out_dir / "pockets").glob("pocket*_atm.pdb"))
+        if not pqr_files:
+            pqr_files = sorted(out_dir.glob("pocket*_atm.pdb"))
+    else:
+        pqr_files = []
 
     pockets: list[Pocket] = []
     for i, pqr in enumerate(pqr_files[:3], start=1):

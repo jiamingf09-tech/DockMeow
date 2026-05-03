@@ -54,9 +54,9 @@ if IS_MACOS:
     if fpocket.exists():
         _binaries.append((str(fpocket), f"bundled/fpocket/{arch_dir}"))
 elif IS_LINUX:
-    fpocket = SRC / "bundled" / "fpocket" / "linux_x64" / "fpocket"
+    fpocket = SRC / "bundled" / "fpocket" / "linux" / "fpocket"
     if fpocket.exists():
-        _binaries.append((str(fpocket), "bundled/fpocket/linux_x64"))
+        _binaries.append((str(fpocket), "bundled/fpocket/linux"))
 elif IS_WINDOWS:
     fpocket = SRC / "bundled" / "fpocket" / "windows_x64" / "fpocket.exe"
     if fpocket.exists():
