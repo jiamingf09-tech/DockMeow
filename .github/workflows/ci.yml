@@ -34,3 +34,42 @@ jobs:
       - name: Run tests
         run: pytest tests/ --tb=short --cov=dockmeow --cov-report=term-missing
         # Stage 1: core tests only; expand in later stages
+
+      # ── fpocket smoke test (Linux + macOS only; no Windows binary) ──────────
+      - name: fpocket smoke test
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          python - << 'PYEOF'
+          import subprocess, sys, tempfile, shutil
+          from pathlib import Path
+
+          src_root = Path("src")
+          sys.path.insert(0, str(src_root))
+          from dockmeow.utils.paths import fpocket_binary
+
+          binary = fpocket_binary()
+          if not binary.exists():
+              print(f"SKIP: fpocket binary not found at {binary}")
+              sys.exit(0)
+
+          pdb = Path("examples/1AKE_with_ATP.pdb")
+          with tempfile.TemporaryDirectory() as tmpdir:
+              local_pdb = Path(tmpdir) / pdb.name
+              shutil.copy2(pdb, local_pdb)
+              result = subprocess.run(
+                  [str(binary), "-f", str(local_pdb)],
+                  capture_output=True, text=True, cwd=tmpdir, timeout=60,
+              )
+              if result.returncode != 0:
+                  print("FAIL: fpocket non-zero exit:", result.stderr[:300])
+                  sys.exit(1)
+              out_dir = Path(tmpdir) / f"{local_pdb.stem}_out"
+              pockets_dir = out_dir / "pockets"
+              atm_files = sorted(pockets_dir.glob("pocket*_atm.pdb")) if pockets_dir.exists() else []
+              info_file = out_dir / f"{local_pdb.stem}_info.txt"
+              if not info_file.exists() or not atm_files:
+                  print(f"FAIL: expected _info.txt and pocket*_atm.pdb, found: {list(out_dir.iterdir())[:5]}")
+                  sys.exit(1)
+              print(f"PASS: fpocket found {len(atm_files)} pockets, _info.txt present")
+          PYEOF
