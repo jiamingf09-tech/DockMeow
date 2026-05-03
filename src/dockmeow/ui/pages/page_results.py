@@ -118,20 +118,25 @@ class ResultsPage(QWidget):
             self._table.selectRow(0)
 
         # Pre-capture receptor + best pose screenshot for later PDF export.
-        # Load combined view now; capture after 1 500 ms (WebGL needs time to render
-        # and the widget may still be transitioning into view).
+        # Use the on_ready callback so capture fires only after loadBestPose() JS
+        # returns (models loaded + render() issued) — avoids fixed-timer race.
         if self._pdb_path and self._poses_sdf_blocks:
-            self._viewer.load_best_pose_for_export(
-                self._pdb_path, self._poses_sdf_blocks[0]
-            )
             _shot_path = Path(tempfile.mkstemp(suffix="_dm_pdf.png")[1])
 
             def _auto_save(path: Path) -> None:
                 if path.exists():
                     self._auto_screenshot = path
 
-            QTimer.singleShot(
-                1500, lambda: self._viewer.capture_png(_shot_path, callback=_auto_save)
+            def _do_capture() -> None:
+                # loadBestPose render() fired; wait one RAF frame (≈16 ms) then grab.
+                QTimer.singleShot(
+                    50, lambda: self._viewer.capture_png(_shot_path, callback=_auto_save)
+                )
+
+            self._viewer.load_best_pose_for_export(
+                self._pdb_path,
+                self._poses_sdf_blocks[0],
+                on_ready=_do_capture,
             )
 
     @staticmethod
@@ -211,16 +216,21 @@ class ResultsPage(QWidget):
             _generate(self._auto_screenshot)
             return
 
-        # Slow path: reload best pose, wait 1 500 ms for WebGL, then capture.
+        # Slow path: reload best pose using callback chain — no fixed timer.
         tmp_png = Path(tempfile.mkstemp(suffix=".png")[1])
 
         def _on_grab(path: Path) -> None:
             _generate(path)
 
         if self._pdb_path and self._poses_sdf_blocks:
+            def _do_capture_slow() -> None:
+                QTimer.singleShot(
+                    50, lambda: self._viewer.capture_png(tmp_png, callback=_on_grab)
+                )
             self._viewer.load_best_pose_for_export(
-                self._pdb_path, self._poses_sdf_blocks[0]
+                self._pdb_path,
+                self._poses_sdf_blocks[0],
+                on_ready=_do_capture_slow,
             )
-            QTimer.singleShot(1500, lambda: self._viewer.capture_png(tmp_png, callback=_on_grab))
         else:
             self._viewer.capture_png(tmp_png, callback=_on_grab)

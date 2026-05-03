@@ -106,6 +106,7 @@ class Viewer3D(QWebEngineView):
         super().__init__(parent)
         self._ready = False
         self._pending: list[str] = []
+        self._pending_callbacks: list[Callable[[], None]] = []
         self.loadFinished.connect(self._on_load_finished)
         # Use a data URL base so that local resource requests are allowed
         self.setHtml(_HTML, QUrl("qrc:/"))
@@ -117,6 +118,9 @@ class Viewer3D(QWebEngineView):
             for js in self._pending:
                 self.page().runJavaScript(js)
             self._pending.clear()
+            for cb in self._pending_callbacks:
+                cb()
+            self._pending_callbacks.clear()
         else:
             _log.warning("Viewer3D: page load failed")
 
@@ -150,14 +154,41 @@ class Viewer3D(QWebEngineView):
     def clear(self) -> None:
         self._run_js("clearAll();")
 
-    def load_best_pose_for_export(self, pdb_path: Path, sdf_content: str) -> None:
-        """Load receptor + best pose together, zoom to binding pocket (for PDF export)."""
+    def load_best_pose_for_export(
+        self,
+        pdb_path: Path,
+        sdf_content: str,
+        on_ready: Callable[[], None] | None = None,
+    ) -> None:
+        """Load receptor + best pose together, zoom to binding pocket (for PDF export).
+
+        Args:
+            pdb_path:   Receptor PDB file.
+            sdf_content: Best-pose SDF text.
+            on_ready:   Optional callback invoked after the JS ``loadBestPose`` call
+                        returns (i.e. models are loaded and render() was issued).
+                        Use this to schedule capture_png immediately after rendering,
+                        avoiding fixed-duration timer assumptions.
+        """
         try:
             pdb_text = Path(pdb_path).read_text(encoding="utf-8", errors="replace")
         except Exception as exc:
             _log.warning("Viewer3D.load_best_pose_for_export: cannot read %s: %s", pdb_path, exc)
+            if on_ready is not None:
+                on_ready()
             return
-        self._run_js(f"loadBestPose({json.dumps(pdb_text)}, {json.dumps(sdf_content)});")
+        js = f"loadBestPose({json.dumps(pdb_text)}, {json.dumps(sdf_content)});"
+        if on_ready is not None:
+            if self._ready:
+                # worldId=0 (MainWorld) required by PySide6 ≤ 6.7; also accepted by 6.11+
+                self.page().runJavaScript(js, 0, lambda _: on_ready())
+            else:
+                # Queue both the JS and the callback for when the page is ready
+                def _deferred_run() -> None:
+                    self.page().runJavaScript(js, 0, lambda _: on_ready())
+                self._pending_callbacks.append(_deferred_run)
+        else:
+            self._run_js(js)
 
     # --- Compatibility wrappers (legacy API) ---------------------------
     def show_receptor(self, pdb_path) -> None:
@@ -209,12 +240,14 @@ class Viewer3D(QWebEngineView):
             return
 
         # render() → wait one animation frame → read pngURI
+        # worldId=0 (MainWorld) keeps this compatible with PySide6 ≤ 6.7 and 6.11+
         def _request() -> None:
             self.page().runJavaScript(
                 "new Promise(function(res) {"
                 "  _v.render();"
                 "  requestAnimationFrame(function() { res(_v.pngURI()); });"
                 "});",
+                0,
                 _on_png_uri,
             )
 
