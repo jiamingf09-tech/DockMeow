@@ -12,6 +12,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
 # 工作目录
 DockMeow_Workspace/
