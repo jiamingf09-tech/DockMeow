@@ -67,7 +67,7 @@ jobs:
       - name: Install vina via pip (non-arm64)
         if: "!(matrix.os == 'macos-14' && matrix.arch == 'arm64')"
         shell: bash
-        run: pip install vina || echo "WARNING: vina pip install failed — continuing without it"
+        run: pip install vina || echo "WARNING vina pip install failed, continuing without it"
 
       # ── Inject build metadata ─────────────────────────────────────────────
       - name: Inject build metadata
