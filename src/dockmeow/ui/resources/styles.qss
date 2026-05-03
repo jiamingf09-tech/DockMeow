@@ -1,0 +1,171 @@
+/* DockMeow / 一键对接 — Global QSS stylesheet (dark Catppuccin-ish palette) */
+
+QMainWindow, QWidget {
+    background: #1E1E2E;
+    color: #CDD6F4;
+    font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    font-size: 13px;
+}
+
+QMenuBar {
+    background: #181825;
+    color: #CDD6F4;
+    border-bottom: 1px solid #313244;
+}
+QMenuBar::item:selected { background: #313244; }
+QMenu { background: #181825; color: #CDD6F4; border: 1px solid #313244; }
+QMenu::item:selected { background: #45475A; }
+
+QStatusBar {
+    background: #181825;
+    color: #A6ADC8;
+    border-top: 1px solid #313244;
+}
+
+/* Step nav (left list) */
+QListWidget#StepNav {
+    background: #181825;
+    border: none;
+    outline: 0;
+    padding: 8px 0;
+}
+QListWidget#StepNav::item {
+    padding: 14px 12px;
+    color: #A6ADC8;
+    border-left: 3px solid transparent;
+}
+QListWidget#StepNav::item:selected {
+    background: #2A2A3E;
+    color: #CDD6F4;
+    border-left: 3px solid #7C9EF8;
+}
+QListWidget#StepNav::item:disabled { color: #585B70; }
+
+/* Generic list & tree */
+QListWidget, QTreeWidget, QTableWidget {
+    background: #252535;
+    border: 1px solid #313244;
+    border-radius: 6px;
+    selection-background-color: #45475A;
+}
+QHeaderView::section {
+    background: #313244;
+    color: #CDD6F4;
+    padding: 6px;
+    border: none;
+}
+
+/* Buttons */
+QPushButton {
+    background: #313244;
+    color: #CDD6F4;
+    border: 1px solid #45475A;
+    border-radius: 6px;
+    padding: 6px 14px;
+}
+QPushButton:hover { background: #45475A; }
+QPushButton:pressed { background: #585B70; }
+QPushButton:disabled { color: #585B70; background: #252535; }
+
+QPushButton#PrimaryButton {
+    background: #7C9EF8;
+    color: #1E1E2E;
+    border: none;
+    font-weight: 700;
+}
+QPushButton#PrimaryButton:hover { background: #94B4FF; }
+
+QPushButton#DangerButton {
+    background: #F38BA8;
+    color: #1E1E2E;
+    border: none;
+    font-weight: 700;
+}
+QPushButton#DangerButton:hover { background: #FA9FB8; }
+
+/* Inputs */
+QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+    background: #252535;
+    color: #CDD6F4;
+    border: 1px solid #45475A;
+    border-radius: 6px;
+    padding: 4px 8px;
+    selection-background-color: #7C9EF8;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QSpinBox:focus,
+QDoubleSpinBox:focus, QComboBox:focus { border-color: #7C9EF8; }
+
+QPlainTextEdit#LogConsole {
+    background: #11111B;
+    color: #BAC2DE;
+    font-family: Menlo, Consolas, monospace;
+}
+
+/* Tabs */
+QTabWidget::pane { border: 1px solid #313244; border-radius: 6px; top: -1px; }
+QTabBar::tab {
+    background: #252535;
+    color: #A6ADC8;
+    padding: 6px 14px;
+    border: 1px solid #313244;
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+QTabBar::tab:selected { background: #313244; color: #CDD6F4; }
+
+/* Progress bar */
+QProgressBar {
+    background: #313244;
+    border: none;
+    border-radius: 4px;
+    text-align: center;
+    color: #CDD6F4;
+    height: 10px;
+}
+QProgressBar::chunk { background: #7C9EF8; border-radius: 4px; }
+
+/* Scroll bar */
+QScrollBar:vertical {
+    background: #181825;
+    width: 10px;
+    border: none;
+}
+QScrollBar::handle:vertical {
+    background: #45475A;
+    border-radius: 5px;
+    min-height: 30px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+
+QSplitter::handle { background: #181825; }
+QSplitter::handle:horizontal { width: 4px; }
+
+/* GroupBox / Dialog */
+QGroupBox {
+    border: 1px solid #313244;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding: 12px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: #CDD6F4;
+}
+
+QDialog { background: #1E1E2E; }
+
+/* Slider */
+QSlider::groove:horizontal {
+    height: 4px;
+    background: #313244;
+    border-radius: 2px;
+}
+QSlider::handle:horizontal {
+    background: #7C9EF8;
+    width: 16px; height: 16px;
+    margin: -6px 0;
+    border-radius: 8px;
+}

@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dockmeow"
+version = "0.1.0"
+description = "DockMeow / 一键对接 — GUI-based molecular docking for researchers"
+requires-python = ">=3.11,<3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "DockMeow Team" }]
+
+dependencies = [
+    "PySide6>=6.6,<6.8",
+    "vina>=1.2.5",          # conda-forge only; pip sdist requires Boost C++ headers
+    "meeko>=0.7,<0.8",      # 0.7 changed receptor prep to Polymer API and write_string to 3-tuple
+    "rdkit>=2024.3.1",
+    "pdbfixer>=1.9",
+    "openmm>=8.1",
+    "numpy>=1.26",
+    "py3Dmol>=2.1",
+    "biopython>=1.83",
+    "cryptography>=42.0",
+    "reportlab>=4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-qt>=4.4", "ruff", "mypy", "pytest-cov"]
+build = ["pyinstaller>=6.5"]
+
+[project.scripts]
+dockmeow = "dockmeow.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"dockmeow" = [
+    "bundled/fpocket/**/*",
+    "ui/resources/**/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--tb=short -m 'not slow'"
+markers = [
+    "slow: end-to-end tests that run the full docking pipeline (deselected by default)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true

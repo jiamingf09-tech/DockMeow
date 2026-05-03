@@ -1,0 +1,33 @@
+# 私钥 & 签发物 — 严禁进 repo
+dockmeow_private.pem
+issued/
+*.dmlic
+
+# 构建产物
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 工作目录
+DockMeow_Workspace/
+*.log
+
+# venv
+.venv*/
+*.venv
+
+# macOS
+.DS_Store
+*.dmg
+
+# Windows
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

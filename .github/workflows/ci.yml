@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14,        arch: arm64   }
+          - { os: macos-13,        arch: x86_64  }
+          - { os: windows-latest,  arch: x86_64  }
+          - { os: ubuntu-22.04,    arch: x86_64  }
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src/ tests/
+
+      - name: Run tests
+        run: pytest tests/ --tb=short --cov=dockmeow --cov-report=term-missing
+        # Stage 1: core tests only; expand in later stages

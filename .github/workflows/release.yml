@@ -1,0 +1,155 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14,       arch: arm64  }
+          - { os: macos-13,       arch: x86_64 }
+          - { os: windows-latest, arch: x86_64 }
+          - { os: ubuntu-22.04,   arch: x86_64 }
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── macOS arm64: install vina + boost from conda ──────────────────────
+      - name: Install Miniforge + conda vina (macOS arm64 only)
+        if: matrix.os == 'macos-14' && matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          # Capture pip site-packages BEFORE conda activation changes 'python'
+          PIP_SP="$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
+
+          curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh \
+            -o /tmp/miniforge.sh
+          bash /tmp/miniforge.sh -b -p "${HOME}/miniforge3"
+          source "${HOME}/miniforge3/etc/profile.d/conda.sh"
+          conda create -y -n dockmeow python=3.11
+          conda activate dockmeow
+          conda install -y -c conda-forge vina boost-cpp
+
+          # Copy vina package into the actions-python site-packages so PyInstaller finds it
+          CONDA_VINA="${HOME}/miniforge3/envs/dockmeow/lib/python3.11/site-packages/vina"
+          if [[ -d "${CONDA_VINA}" ]]; then
+            cp -r "${CONDA_VINA}" "${PIP_SP}/"
+            echo "Copied vina → ${PIP_SP}/vina"
+          fi
+          echo "CONDA_LIB=${HOME}/miniforge3/envs/dockmeow/lib" >> "${GITHUB_ENV}"
+
+      # ── Linux: install libfuse2 + wget for appimagetool ──────────────────
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y libfuse2 wget
+
+      # ── Python build deps ─────────────────────────────────────────────────
+      - name: Install Python build dependencies
+        run: |
+          pip install --upgrade pip pyinstaller
+          pip install -r requirements-build.txt
+
+      # ── vina pip install (all platforms except macOS arm64) ───────────────
+      - name: Install vina via pip (non-arm64)
+        if: "!(matrix.os == 'macos-14' && matrix.arch == 'arm64')"
+        shell: bash
+        run: pip install vina || echo "WARNING: vina pip install failed — continuing without it"
+
+      # ── Inject build metadata ─────────────────────────────────────────────
+      - name: Inject build metadata
+        run: python tools/inject_build_info.py
+        continue-on-error: true
+
+      # ── PyInstaller ───────────────────────────────────────────────────────
+      - name: Build with PyInstaller
+        env:
+          CONDA_LIB: ${{ env.CONDA_LIB }}
+        run: pyinstaller packaging/dockmeow.spec --clean --noconfirm
+
+      # ── Prepare output directory ──────────────────────────────────────────
+      - name: Create dist/installers
+        run: mkdir -p dist/installers
+
+      # ── Package: macOS DMG ────────────────────────────────────────────────
+      - name: Package macOS DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CONDA_LIB: ${{ env.CONDA_LIB }}
+        run: |
+          # Fix boost dylib rpath so the .app is self-contained
+          if [[ -n "${CONDA_LIB:-}" ]]; then
+            APP_FRAMEWORKS="dist/DockMeow.app/Contents/Frameworks"
+            for dylib in libboost_thread.dylib libboost_filesystem.dylib; do
+              src="${CONDA_LIB}/${dylib}"
+              dst="${APP_FRAMEWORKS}/${dylib}"
+              if [[ -f "${src}" && -f "${dst}" ]]; then
+                install_name_tool -id "@rpath/${dylib}" "${dst}" || true
+              fi
+            done
+          fi
+
+          VERSION="$(python -c "import sys; sys.path.insert(0,'src'); from dockmeow.version import __version__; print(__version__)")"
+          ARCH="${{ matrix.arch }}"
+          DMG_NAME="DockMeow-${VERSION}-${ARCH}.dmg"
+          hdiutil create \
+            -volname DockMeow \
+            -srcfolder dist/DockMeow.app \
+            -ov \
+            -format UDZO \
+            "dist/installers/${DMG_NAME}"
+          echo "Created dist/installers/${DMG_NAME}"
+
+      # ── Package: Windows Inno Setup ───────────────────────────────────────
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          choco install innosetup -y
+          iscc packaging\windows\installer.iss
+
+      # ── Package: Linux AppImage ───────────────────────────────────────────
+      - name: Package Linux AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash packaging/linux/build_appimage.sh
+
+      # ── Upload artifacts ──────────────────────────────────────────────────
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dockmeow-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/installers/*
+          if-no-files-found: warn
+
+  # ── GitHub Release ──────────────────────────────────────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist/installers
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/installers/*
+          prerelease: true
+          generate_release_notes: true

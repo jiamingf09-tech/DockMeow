@@ -1,0 +1,29 @@
+# Pinned dependency versions validated on macOS arm64 with conda-forge
+# Generated: 2026-05-01
+# Python: 3.11
+# Conda env: dockmeow
+#
+# Install order matters for conda-forge packages:
+#   conda install -c conda-forge vina meeko rdkit pdbfixer openmm numpy
+#   pip install -e ".[dev]"
+
+# Core scientific stack (conda-forge)
+vina==1.2.6
+meeko==0.7.1
+rdkit==2025.9.6
+pdbfixer==1.12.0
+OpenMM==8.5.1
+numpy==1.26.4
+
+# Informatics / reporting
+py3Dmol==2.5.4
+biopython==1.87
+cryptography==47.0.0
+reportlab==4.5.0
+
+# Dev tools
+pytest>=8
+pytest-qt>=4.4
+ruff
+mypy
+pytest-cov

@@ -1,0 +1,32 @@
+# PyPI-only requirements for clean .venv-build (used for PyInstaller packaging)
+# vina is NOT on PyPI for macOS arm64; copy from conda:
+#   cp -r /opt/miniconda3/envs/dockmeow/lib/python3.11/site-packages/vina \
+#          .venv-build/lib/python3.11/site-packages/
+# The vina .so links boost dylibs via @rpath -> they must be bundled by PyInstaller.
+
+biopython==1.87
+cffi==2.0.0
+charset-normalizer==3.4.7
+cryptography==47.0.0
+fonttools==4.62.1
+gemmi==0.7.5
+meeko==0.7.1
+numpy==2.4.4
+OpenMM==8.5.1
+pdbfixer==1.12.0
+pdfplumber==0.11.9
+Pillow==12.2.0
+py3Dmol==2.5.4
+PySide6==6.7.3
+rdkit==2026.3.1
+reportlab==4.5.0
+scipy==1.17.1
+
+# Dev / test only
+coverage==7.13.5
+fonttools==4.62.1
+mypy==1.20.2
+pytest==9.0.3
+pytest-cov==7.1.0
+pytest-qt==4.5.0
+ruff==0.15.12
