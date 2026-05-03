@@ -3,6 +3,8 @@ name: Build & Release
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -153,8 +155,10 @@ jobs:
           if-no-files-found: warn
 
   # ── GitHub Release ──────────────────────────────────────────────────────────
+  # Only runs on tag pushes (v*); PRs only validate the build jobs above.
   release:
     needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Download all build artifacts

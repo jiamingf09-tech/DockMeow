@@ -83,6 +83,7 @@ class ReportData:
     license_id: str
     timestamp: str          # ISO-8601 string, pre-formatted by caller
     watermark: bool = False  # True for trial licenses
+    os_warning: str = ""    # Non-empty on Windows when fpocket is absent
 
 
 def generate_pdf_report(
@@ -314,6 +315,23 @@ def generate_pdf_report(
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey))
     story.append(Spacer(1, 0.3 * cm))
 
+    # Windows platform notice (shown when pocket source is not cocrystal)
+    if data.os_warning:
+        win_warn_style = ParagraphStyle(
+            "win_warn",
+            fontName=_F,
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#78350F"),
+            backColor=colors.HexColor("#FEF3C7"),
+            borderPadding=(4, 8, 4, 8),
+            borderWidth=1,
+            borderColor=colors.HexColor("#FCD34D"),
+            borderRadius=3,
+            spaceAfter=0.3 * cm,
+        )
+        story.append(Paragraph(data.os_warning, win_warn_style))
+
     cfg = data.result.config
     if cfg:
         param_rows = [
@@ -421,6 +439,16 @@ def generate_report(
         except Exception:
             pass
 
+    # Build platform notice for Windows runs without fpocket
+    import sys as _sys
+    _os_warning = ""
+    if _sys.platform == "win32" and pocket.source not in ("cocrystal",):
+        _os_warning = (
+            "⚠️ 平台说明：本报告在 Windows 上生成。"
+            "Windows 版本暂不支持 fpocket 自动口袋检测，"
+            '本次对接使用口袋来源："%s"。' % pocket.source
+        )
+
     data = ReportData(
         project_name=project_name,
         receptor=receptor_info,
@@ -431,6 +459,7 @@ def generate_report(
         license_id=license_id,
         timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         watermark=watermark,
+        os_warning=_os_warning,
     )
 
     screens = [screenshot_path] if screenshot_path and screenshot_path.exists() else []

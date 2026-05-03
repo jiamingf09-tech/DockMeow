@@ -20,20 +20,73 @@ xattr -cr /Applications/DockMeow.app
 
 ---
 
+## Windows 首次启动
+
+下载 `DockMeow-Setup-x.x.x-x64.exe` 后双击安装，安装完成后可从开始菜单启动。
+
+首次启动时，Windows SmartScreen 可能弹出蓝色警告框"Windows 已保护你的电脑"：
+
+1. 点击"**更多信息**"（左下角小字）
+2. 点击"**仍要运行**"
+
+> **原因**：内测版未经 Microsoft 代码签名认证。正式发布版将通过签名，届时不再出现此提示。
+
+---
+
+## Linux 启动
+
+下载 `DockMeow-x.x.x-x86_64.AppImage` 后：
+
+```bash
+# 添加执行权限（仅首次）
+chmod +x DockMeow-*.AppImage
+
+# 直接运行
+./DockMeow-*.AppImage
+```
+
+若提示 3D 视图黑屏或崩溃，可尝试加 `--no-sandbox` 参数（部分容器化环境需要）：
+
+```bash
+./DockMeow-*.AppImage --no-sandbox
+```
+
+> **系统要求**：Ubuntu 22.04 / Debian 12 或同等 glibc 2.35+ 发行版；需 libfuse2（`sudo apt install libfuse2`）。
+
+---
+
+## 已知平台差异
+
+| 功能 | macOS (arm64 / x64) | Windows | Linux |
+|------|---------------------|---------|-------|
+| 自动口袋检测（fpocket） | ✅ 支持 | ❌ 不支持¹ | ✅ 支持 |
+| AutoDock Vina 对接 | ✅ | ✅ | ✅ |
+| 3D 可视化 | ✅ | ✅ | ✅ |
+| PDF 报告导出 | ✅ | ✅ | ✅ |
+| 代码签名 / 公证 | ❌ 内测版未签名 | ❌ 内测版未签名 | — |
+
+¹ **Windows 口袋检测限制**：fpocket 无可用的 Windows 二进制。若 PDB 含共结晶配体，软件会自动使用共结晶口袋（推荐）；否则将使用全蛋白盲对接盒子。口袋页顶部会显示提示条。
+
+---
+
 ## 系统要求
 
-- macOS 12.0 (Monterey) 及以上
-- Apple Silicon (arm64) 或 Intel (x64)
-- 约 400 MB 磁盘空间
+| 平台 | 最低系统 | 架构 | 磁盘 |
+|------|---------|------|------|
+| macOS | 12.0 (Monterey) | arm64 / x86_64 | ~400 MB |
+| Windows | 10 / 11 (64-bit) | x86_64 | ~350 MB |
+| Linux | Ubuntu 22.04 / glibc 2.35+ | x86_64 | ~400 MB |
 
 ---
 
 ## 快速上手
 
-1. 将 `DockMeow.app` 拖入 `/Applications/` 文件夹
-2. 首次启动执行上述 `xattr` 命令（仅一次）
-3. 双击打开，在「文件 → 激活授权」中输入许可证密钥
-4. 依次完成：受体 → 配体 → 口袋 → 参数 → 运行 → 结果
+**macOS**：将 `DockMeow.app` 拖入 `/Applications/`，首次运行执行 `xattr -cr` 命令（见上）。  
+**Windows**：运行安装程序，按向导完成安装，从开始菜单启动。  
+**Linux**：添加执行权限后直接运行 AppImage（见上）。
+
+1. 打开软件，在「文件 → 激活授权」中输入许可证密钥
+2. 依次完成：受体 → 配体 → 口袋 → 参数 → 运行 → 结果
 
 ---
 
@@ -47,11 +100,20 @@ xattr -cr /Applications/DockMeow.app
 
 ## 常见问题
 
-**Q：提示"已损坏，无法打开"怎么办？**  
+**Q：（macOS）提示"已损坏，无法打开"怎么办？**  
 A：执行 `xattr -cr /Applications/DockMeow.app` 后重试。
 
+**Q：（Windows）SmartScreen 警告怎么办？**  
+A：点"更多信息" → "仍要运行"即可。
+
+**Q：（Linux）AppImage 无法运行，提示缺少 FUSE？**  
+A：执行 `sudo apt install libfuse2` 后重试。
+
+**Q：口袋页提示"Windows 版本暂不支持自动口袋检测"？**  
+A：属于已知限制，请选择"全蛋白盲对接"，或上传含共结晶配体的原始 PDB。
+
 **Q：3D 视图空白或无法加载？**  
-A：需要 macOS 12+ 且开启硬件加速（系统偏好设置 → 电池 → 关闭「低能耗模式」）。
+A：macOS 需 12+，开启硬件加速；Linux 可加 `--no-sandbox`；Windows 需 DirectX 11+。
 
 **Q：对接速度很慢？**  
 A：在「参数」页面降低 `exhaustiveness`（默认 8，可调至 4 快速预览）。

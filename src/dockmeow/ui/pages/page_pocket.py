@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -21,6 +23,11 @@ from dockmeow.ui.widgets.pocket_card import PocketCard
 from dockmeow.ui.widgets.viewer_3d import Viewer3D
 from dockmeow.workers.pocket_worker import PocketWorker
 
+_WINDOWS_FPOCKET_WARNING = (
+    '⚠️ Windows 版本暂不支持自动口袋检测。'
+    '如本结构无共结晶配体，请选择“全蛋白盲对接”或手动指定坐标。'
+)
+
 
 class PocketPage(QWidget):
     """List pocket candidates (cards) + 3D box visualization."""
@@ -35,10 +42,32 @@ class PocketPage(QWidget):
         self._cards: list[PocketCard] = []
         self._selected_pocket: Pocket | None = None
 
-        root = QHBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(6)
+
+        # ---- Windows platform notice (permanent, shown only when fpocket absent) ----
+        if sys.platform == "win32":
+            from dockmeow.utils.paths import fpocket_binary
+            if not fpocket_binary().exists():
+                warn_bar = QFrame()
+                warn_bar.setObjectName("WinFpocketWarn")
+                warn_bar.setStyleSheet(
+                    "#WinFpocketWarn {"
+                    "  background:#FEF3C7; border:1px solid #FCD34D;"
+                    "  border-radius:4px; padding:0px;"
+                    "}"
+                )
+                warn_layout = QHBoxLayout(warn_bar)
+                warn_layout.setContentsMargins(10, 6, 10, 6)
+                warn_label = QLabel(_WINDOWS_FPOCKET_WARNING)
+                warn_label.setWordWrap(True)
+                warn_label.setStyleSheet("color:#78350F; font-size:12px; background:transparent;")
+                warn_layout.addWidget(warn_label)
+                outer.addWidget(warn_bar)
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        root.addWidget(splitter)
+        outer.addWidget(splitter, 1)
 
         # ---- left: list of cards
         left = QWidget()

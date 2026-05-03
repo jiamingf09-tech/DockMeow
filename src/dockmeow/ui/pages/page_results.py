@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
+
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -37,6 +38,7 @@ class ResultsPage(QWidget):
         self._result = None
         self._pdb_path: Path | None = None
         self._poses_sdf_blocks: list[str] = []
+        self._auto_screenshot: Path | None = None  # pre-captured for PDF export
 
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -92,6 +94,7 @@ class ResultsPage(QWidget):
 
     def set_result(self, result) -> None:
         self._result = result
+        self._auto_screenshot = None  # reset for this docking session
         self._poses_sdf_blocks = self._split_sdf(
             Path(result.poses_sdf).read_text(encoding="utf-8", errors="replace")
             if Path(result.poses_sdf).exists() else ""
@@ -113,6 +116,23 @@ class ResultsPage(QWidget):
             )
         if scores:
             self._table.selectRow(0)
+
+        # Pre-capture receptor + best pose screenshot for later PDF export.
+        # Load combined view now; capture after 1 500 ms (WebGL needs time to render
+        # and the widget may still be transitioning into view).
+        if self._pdb_path and self._poses_sdf_blocks:
+            self._viewer.load_best_pose_for_export(
+                self._pdb_path, self._poses_sdf_blocks[0]
+            )
+            _shot_path = Path(tempfile.mkstemp(suffix="_dm_pdf.png")[1])
+
+            def _auto_save(path: Path) -> None:
+                if path.exists():
+                    self._auto_screenshot = path
+
+            QTimer.singleShot(
+                1500, lambda: self._viewer.capture_png(_shot_path, callback=_auto_save)
+            )
 
     @staticmethod
     def _split_sdf(text: str) -> list[str]:
@@ -173,27 +193,34 @@ class ResultsPage(QWidget):
         if not dest:
             return
 
-        tmp_png = Path(tempfile.mkstemp(suffix=".png")[1])
-
-        def _on_grab(path: Path) -> None:
+        def _generate(screenshot: Path | None) -> None:
             try:
                 generate_report(
                     self._receptor_info,
                     self._ligand_info,
                     self._result,
                     Path(dest),
-                    screenshot_path=path if path.exists() else None,
+                    screenshot_path=screenshot if screenshot and screenshot.exists() else None,
                 )
                 QMessageBox.information(self, "PDF", f"已生成：{dest}")
             except Exception as e:  # noqa: BLE001
                 QMessageBox.warning(self, "PDF", f"PDF 生成失败：{e}")
 
-        # Load receptor + best pose together, zoom to binding pocket,
-        # then wait 800 ms for WebGL to render before capturing.
+        # Fast path: reuse the pre-captured screenshot taken when results loaded.
+        if self._auto_screenshot and self._auto_screenshot.exists():
+            _generate(self._auto_screenshot)
+            return
+
+        # Slow path: reload best pose, wait 1 500 ms for WebGL, then capture.
+        tmp_png = Path(tempfile.mkstemp(suffix=".png")[1])
+
+        def _on_grab(path: Path) -> None:
+            _generate(path)
+
         if self._pdb_path and self._poses_sdf_blocks:
             self._viewer.load_best_pose_for_export(
                 self._pdb_path, self._poses_sdf_blocks[0]
             )
-            QTimer.singleShot(800, lambda: self._viewer.capture_png(tmp_png, callback=_on_grab))
+            QTimer.singleShot(1500, lambda: self._viewer.capture_png(tmp_png, callback=_on_grab))
         else:
             self._viewer.capture_png(tmp_png, callback=_on_grab)
