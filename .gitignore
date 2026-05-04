@@ -2,6 +2,7 @@
 dockmeow_private.pem
 issued/
 *.dmlic
+customers.db
 
 # 构建产物
 build/
