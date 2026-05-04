@@ -12,6 +12,31 @@ from PySide6.QtWidgets import QApplication
 from dockmeow.utils.paths import resource_path
 
 
+def _force_pyside_eager_import() -> None:
+    """Pre-import every PySide6 sub-module we use in the MAIN THREAD.
+
+    In PyInstaller bundles PySide6 uses Shiboken lazy-import which calls
+    ``dlopen`` the first time a sub-module is accessed.  When that first
+    access happens inside a QThread worker macOS dyld raises EXC_BAD_ACCESS
+    (``mach_o::Header::forEachLoadCommand`` is not re-entrant from non-main
+    threads).  Importing everything here, before any worker is started,
+    converts all future accesses into simple dict lookups – no dlopen needed.
+    """
+    try:
+        import PySide6.QtCore          # noqa: F401
+        import PySide6.QtGui           # noqa: F401
+        import PySide6.QtWidgets       # noqa: F401
+        import PySide6.QtWebEngineCore     # noqa: F401
+        import PySide6.QtWebEngineWidgets  # noqa: F401
+        import PySide6.QtNetwork       # noqa: F401
+        import PySide6.QtOpenGL        # noqa: F401
+        import PySide6.QtOpenGLWidgets # noqa: F401
+        import PySide6.QtPrintSupport  # noqa: F401
+    except Exception:  # noqa: BLE001
+        # Non-fatal: if a sub-module is absent (e.g. minimal Qt build), skip it
+        pass
+
+
 def _install_excepthook() -> None:
     """Install a global exception handler that shows a dialog instead of crashing."""
     import sys as _sys
@@ -76,6 +101,9 @@ def _check_license() -> dict | None:
 
 def run() -> int:
     """Full application lifecycle: create → license-check → main window → exec."""
+    # Must be first: pre-import PySide6 submodules in the main thread so that
+    # worker QThreads never trigger Shiboken lazy-import / dlopen (macOS crash).
+    _force_pyside_eager_import()
     _install_excepthook()
     app = create_app()
     license_data = _check_license()

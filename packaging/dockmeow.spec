@@ -190,7 +190,10 @@ a = Analysis(
     hiddenimports=_hidden,
     hookspath=[str(ROOT / "packaging" / "hooks")],
     hooksconfig={},
-    runtime_hooks=[str(ROOT / "packaging" / "hooks" / "rthook-webengine.py")],
+    runtime_hooks=[
+        str(ROOT / "packaging" / "hooks" / "rthook-pyside6-eager.py"),
+        str(ROOT / "packaging" / "hooks" / "rthook-webengine.py"),
+    ],
     excludes=[
         # Test / dev tools not needed at runtime
         "pytest", "pytest_qt", "_pytest",
