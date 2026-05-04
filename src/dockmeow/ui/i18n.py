@@ -18,6 +18,8 @@ _STRINGS: dict[str, str] = {
     "nav.params": "④ 参数",
     "nav.run": "⑤ 对接",
     "nav.results": "⑥ 结果",
+    "nav.prev": "上一步",
+    "nav.next": "下一步",
 
     # --- Welcome page ---
     "welcome.title": "欢迎使用一键对接",

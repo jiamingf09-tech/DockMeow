@@ -64,11 +64,40 @@ def _build_html() -> str:
         "  _v.setStyle({model:-1}, {stick:{colorscheme:'greenCarbon'}});"
         "  _v.zoomTo({model:-1}); _v.zoom(0.7); _v.render();"
         "}"
+        "function setPocketReceptorStyle() {"
+        "  _v.setStyle({}, {cartoon:{color:'spectrum',opacity:0.55}});"
+        "}"
+        "function addDockBox(box, selected) {"
+        "  var color = selected ? '#FF9500' : '#888888';"
+        "  var fillOpacity = selected ? 0.25 : 0.15;"
+        "  var wireOpacity = selected ? 0.85 : 0.15;"
+        "  var lineWidth = selected ? 3 : 1;"
+        "  if (selected) {"
+        "  _v.addBox({center:{x:box.cx,y:box.cy,z:box.cz},"
+        "             dimensions:{w:box.sx,h:box.sy,d:box.sz},"
+        "             color:color,opacity:fillOpacity,wireframe:false});"
+        "  }"
+        "  _v.addBox({center:{x:box.cx,y:box.cy,z:box.cz},"
+        "             dimensions:{w:box.sx,h:box.sy,d:box.sz},"
+        "             color:color,opacity:wireOpacity,wireframe:true,linewidth:lineWidth});"
+        "}"
         "function showBox(cx,cy,cz,sx,sy,sz) {"
-        "  _v.addBox({center:{x:cx,y:cy,z:cz},"
-        "             dimensions:{w:sx,h:sy,d:sz},"
-        "             color:'#7C9EF8',opacity:0.2,wireframe:true});"
+        "  _v.removeAllShapes();"
+        "  setPocketReceptorStyle();"
+        "  addDockBox({cx:cx,cy:cy,cz:cz,sx:sx,sy:sy,sz:sz}, true);"
         "  _v.render();"
+        "}"
+        "function showBoxes(boxes, selectedIndex) {"
+        "  _v.removeAllShapes();"
+        "  setPocketReceptorStyle();"
+        "  for (var i = 0; i < boxes.length; i++) {"
+        "    addDockBox(boxes[i], i === selectedIndex);"
+        "  }"
+        "  _v.render();"
+        "}"
+        "function loadReceptorWithBoxes(pdbText, boxes, selectedIndex) {"
+        "  loadReceptor(pdbText);"
+        "  showBoxes(boxes, selectedIndex);"
         "}"
         "function clearAll() {"
         "  _v.removeAllModels(); _v.removeAllShapes(); _v.render();"
@@ -144,12 +173,69 @@ class Viewer3D(QWebEngineView):
 
     def show_box(
         self,
-        center: tuple[float, float, float],
-        size: tuple[float, float, float],
+        center: tuple[float, float, float] | object,
+        size: tuple[float, float, float] | None = None,
     ) -> None:
+        if size is None and hasattr(center, "center") and hasattr(center, "size"):
+            size = getattr(center, "size")
+            center = getattr(center, "center")
+        if size is None:
+            raise ValueError("show_box() requires either a Pocket or center and size")
         cx, cy, cz = center
         sx, sy, sz = size
         self._run_js(f"showBox({cx},{cy},{cz},{sx},{sy},{sz});")
+
+    def show_pockets(self, pockets: list[object], selected: object | None = None) -> None:
+        boxes, selected_index = self._box_payloads(pockets, selected)
+        self._run_js(f"showBoxes({json.dumps(boxes)}, {selected_index});")
+
+    def load_receptor_with_pockets(
+        self,
+        pdb_path: Path,
+        pockets: list[object],
+        selected: object | None = None,
+    ) -> None:
+        try:
+            pdb_text = Path(pdb_path).read_text(encoding="utf-8", errors="replace")
+        except Exception as exc:
+            _log.warning("Viewer3D.load_receptor_with_pockets: cannot read %s: %s", pdb_path, exc)
+            return
+        boxes, selected_index = self._box_payloads(pockets, selected)
+        self._run_js(
+            f"loadReceptorWithBoxes({json.dumps(pdb_text)}, "
+            f"{json.dumps(boxes)}, {selected_index});"
+        )
+
+    @staticmethod
+    def _box_payloads(
+        pockets: list[object],
+        selected: object | None = None,
+    ) -> tuple[list[dict[str, float]], int]:
+        boxes: list[dict[str, float]] = []
+        selected_index = -1
+        selected_key = None
+        if selected is not None:
+            selected_key = (
+                getattr(selected, "pocket_id", None),
+                getattr(selected, "source", None),
+            )
+        for idx, pocket in enumerate(pockets):
+            cx, cy, cz = getattr(pocket, "center")
+            sx, sy, sz = getattr(pocket, "size")
+            boxes.append(
+                {
+                    "cx": float(cx),
+                    "cy": float(cy),
+                    "cz": float(cz),
+                    "sx": float(sx),
+                    "sy": float(sy),
+                    "sz": float(sz),
+                }
+            )
+            key = (getattr(pocket, "pocket_id", None), getattr(pocket, "source", None))
+            if selected_key is not None and key == selected_key:
+                selected_index = idx
+        return boxes, selected_index
 
     def clear(self) -> None:
         self._run_js("clearAll();")

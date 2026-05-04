@@ -129,7 +129,10 @@ class ReceptorPage(QWidget):
         else:
             self._status.setText("受体准备完成。")
 
+        stripped_chains = set(getattr(info, "nucleic_acid_chains", []) or [])
         for h in getattr(info, "hetero_groups", []) or []:
+            if getattr(h, "chain", None) in stripped_chains:
+                continue
             tag = "★ " if getattr(h, "is_likely_ligand", False) else ""
             self._hetero_list.addItem(
                 f"{tag}{h.resname}  chain={h.chain}  resi={h.resi}"
@@ -137,10 +140,10 @@ class ReceptorPage(QWidget):
         for w in getattr(info, "warnings", []) or []:
             self._warnings.addItem(w)
 
-        if self._pdb_path is not None:
-            self._viewer.load_receptor(self._pdb_path)
+        prepared_pdb = Path(info.pdb_path)
+        self._viewer.load_receptor(prepared_pdb)
 
-        self.receptor_ready.emit(info, self._pdb_path)
+        self.receptor_ready.emit(info, prepared_pdb)
 
     def _on_failed(self, user_message: str, suggestion: str) -> None:
         self._progress.setVisible(False)

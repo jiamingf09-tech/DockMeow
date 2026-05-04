@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout
 
 from dockmeow.core.pocket import Pocket
 
@@ -20,6 +20,7 @@ class PocketCard(QFrame):
         self.setObjectName("PocketCard")
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -28,10 +29,12 @@ class PocketCard(QFrame):
         title = QLabel(pocket.label or f"口袋 {pocket.pocket_id}")
         title.setObjectName("PocketTitle")
         title.setStyleSheet("font-weight: 700; font-size: 14px;")
+        title.setWordWrap(True)
         layout.addWidget(title)
 
         score_lbl = QLabel(f"评分：{pocket.score:.2f}  ·  来源：{pocket.source}")
         score_lbl.setStyleSheet("color: #A6ADC8;")
+        score_lbl.setWordWrap(True)
         layout.addWidget(score_lbl)
 
         cx, cy, cz = pocket.center

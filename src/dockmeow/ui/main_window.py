@@ -25,7 +25,9 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QStackedWidget,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -116,8 +118,26 @@ class MainWindow(QMainWindow):
         ):
             self._stack.addWidget(p)
 
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(self._stack, 1)
+
+        nav_row = QHBoxLayout()
+        nav_row.setContentsMargins(12, 8, 12, 8)
+        nav_row.addStretch(1)
+        self._prev_btn = QPushButton(t("nav.prev"))
+        self._next_btn = QPushButton(t("nav.next"))
+        self._next_btn.setObjectName("PrimaryButton")
+        self._prev_btn.clicked.connect(self._on_prev_clicked)
+        self._next_btn.clicked.connect(self._on_next_clicked)
+        nav_row.addWidget(self._prev_btn)
+        nav_row.addWidget(self._next_btn)
+        content_layout.addLayout(nav_row)
+
         layout.addWidget(self._nav)
-        layout.addWidget(self._stack, 1)
+        layout.addWidget(content, 1)
         self.setCentralWidget(central)
 
         # Status bar
@@ -129,7 +149,6 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self._receptor_page.receptor_ready.connect(self._on_receptor_ready)
         self._ligand_page.ligand_ready.connect(self._on_ligand_ready)
-        self._pocket_page.pocket_selected.connect(self._on_pocket_selected)
         self._params_page.params_ready.connect(self._on_params_ready)
         self._run_page.run_finished.connect(self._on_run_finished)
         self._results_page.new_docking_requested.connect(self._reset_to_start)
@@ -137,40 +156,94 @@ class MainWindow(QMainWindow):
     # --- nav -----------------------------------------------------------
     def _go_to_page(self, idx: int) -> None:
         idx = max(0, min(idx, self._stack.count() - 1))
+        if idx == 2:
+            self._prepare_pocket_page()
         self._stack.setCurrentIndex(idx)
         self._nav.blockSignals(True)
         self._nav.setCurrentRow(idx)
         self._nav.blockSignals(False)
-        # Enable nav items only up to (and including) the next step
+        max_unlocked = self._max_unlocked_page()
         for i in range(self._nav.count()):
             item = self._nav.item(i)
             flags = item.flags()
-            if i <= idx + 1:
+            if i <= max_unlocked:
                 item.setFlags(flags | Qt.ItemFlag.ItemIsEnabled)
             else:
                 item.setFlags(flags & ~Qt.ItemFlag.ItemIsEnabled)
+        self._update_next_button_enabled()
 
     def _on_nav_changed(self, idx: int) -> None:
         if idx < 0:
             return
-        self._stack.setCurrentIndex(idx)
+        if idx <= self._max_unlocked_page():
+            self._go_to_page(idx)
+
+    def _max_unlocked_page(self) -> int:
+        if self._docking_result is not None:
+            return 5
+        if self._params is not None:
+            return 4
+        if self._pocket is not None:
+            return 3
+        if self._ligand_info is not None:
+            return 2
+        if self._receptor_info is not None:
+            return 1
+        return 0
+
+    def _update_next_button_enabled(self) -> None:
+        idx = self._stack.currentIndex()
+        self._prev_btn.setEnabled(idx > 0)
+        self._next_btn.setVisible(idx in (0, 1, 2))
+        if idx == 0:
+            self._next_btn.setEnabled(self._receptor_info is not None)
+        elif idx == 1:
+            self._next_btn.setEnabled(self._ligand_info is not None)
+        elif idx == 2:
+            self._next_btn.setEnabled(
+                self._receptor_info is not None and self._ligand_info is not None
+            )
+        else:
+            self._next_btn.setEnabled(False)
+
+    def _on_prev_clicked(self) -> None:
+        self._go_to_page(self._stack.currentIndex() - 1)
+
+    def _on_next_clicked(self) -> None:
+        idx = self._stack.currentIndex()
+        if idx == 0:
+            if self._receptor_info is None:
+                QMessageBox.warning(self, t("app.title"), "请先完成受体准备。")
+                return
+            self._go_to_page(1)
+        elif idx == 1:
+            if self._ligand_info is None:
+                QMessageBox.warning(self, t("app.title"), "请先完成配体准备。")
+                return
+            self._prepare_pocket_page()
+            self._go_to_page(2)
+        elif idx == 2:
+            pocket = self._pocket_page.get_selected_pocket()
+            if pocket is None:
+                QMessageBox.warning(self, t("app.title"), "请先选择或自定义一个口袋。")
+                return
+            self._pocket = pocket
+            self._go_to_page(3)
+
+    def _prepare_pocket_page(self) -> None:
+        if self._receptor_info is not None and self._pdb_path is not None:
+            self._pocket_page.set_receptor(self._receptor_info, self._pdb_path)
 
     # --- page handlers -------------------------------------------------
     def _on_receptor_ready(self, receptor_info, pdb_path) -> None:
         self._receptor_info = receptor_info
         self._pdb_path = Path(pdb_path) if pdb_path else None
-        self._go_to_page(1)
+        self._update_next_button_enabled()
 
     def _on_ligand_ready(self, ligand_info) -> None:
         self._ligand_info = ligand_info
-        # Kick off pocket detection lazily when entering pocket page
-        if self._receptor_info is not None and self._pdb_path is not None:
-            self._pocket_page.set_receptor(self._receptor_info, self._pdb_path)
-        self._go_to_page(2)
-
-    def _on_pocket_selected(self, pocket) -> None:
-        self._pocket = pocket
-        self._go_to_page(3)
+        self._prepare_pocket_page()
+        self._update_next_button_enabled()
 
     def _on_params_ready(self, params: dict) -> None:
         self._params = params

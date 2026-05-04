@@ -395,7 +395,16 @@ def _pdb_to_pdbqt(
     _meeko_log.addHandler(_capture)
     try:
         templates = ResidueChemTemplates.create_from_defaults()
-        mk_prep = MoleculePreparation()
+    except Exception as exc:
+        _meeko_log.removeHandler(_capture)
+        raise ReceptorPreparationError(
+            f"meeko residue templates unavailable: {exc}",
+            "受体 PDBQT 生成失败。",
+            "请确认打包版本包含 meeko/data/residue_chem_templates.json。",
+        ) from exc
+
+    mk_prep = MoleculePreparation()
+    try:
         polymer = Polymer.from_pdb_string(
             pdb_text,
             templates,

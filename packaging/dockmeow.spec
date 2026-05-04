@@ -34,6 +34,10 @@ IS_LINUX   = sys.platform.startswith("linux")
 # ── Binaries ─────────────────────────────────────────────────────────────────
 
 _binaries = []
+_OPENMM_APP_DATA = VENV_SP / "openmm" / "app" / "data"
+_PDBFIXER_TEMPLATES = VENV_SP / "pdbfixer" / "templates"
+_PDBFIXER_SOFT_XML = VENV_SP / "pdbfixer" / "soft.xml"
+_MEEKO_DATA = VENV_SP / "meeko" / "data"
 
 # vina .so (macOS only — no arm64 PyPI wheel; copied from conda by CI)
 if IS_MACOS:
@@ -62,6 +66,31 @@ elif IS_WINDOWS:
     if fpocket.exists():
         _binaries.append((str(fpocket), "bundled/fpocket/windows_x64"))
 
+# OpenMM's PDB parser loads XML replacement tables via paths relative to
+# openmm.app.pdbfile.__file__.  In macOS bundles PyInstaller places collected
+# package binaries under Contents/Frameworks/openmm, so these data files must be
+# available there as well as under Resources.
+if _OPENMM_APP_DATA.exists():
+    for data_file in _OPENMM_APP_DATA.rglob("*"):
+        if data_file.is_file():
+            rel = data_file.relative_to(_OPENMM_APP_DATA)
+            _binaries.append((str(data_file), str(Path("openmm") / "app" / "data" / rel.parent)))
+
+if _PDBFIXER_TEMPLATES.exists():
+    for template_file in _PDBFIXER_TEMPLATES.rglob("*"):
+        if template_file.is_file():
+            rel = template_file.relative_to(_PDBFIXER_TEMPLATES)
+            _binaries.append((str(template_file), str(Path("pdbfixer") / "templates" / rel.parent)))
+
+if _PDBFIXER_SOFT_XML.exists():
+    _binaries.append((str(_PDBFIXER_SOFT_XML), "pdbfixer"))
+
+if _MEEKO_DATA.exists():
+    for data_file in _MEEKO_DATA.rglob("*"):
+        if data_file.is_file():
+            rel = data_file.relative_to(_MEEKO_DATA)
+            _binaries.append((str(data_file), str(Path("meeko") / "data" / rel.parent)))
+
 # ── Data files ────────────────────────────────────────────────────────────────
 
 _PYSIDE6 = VENV_SP / "PySide6"
@@ -89,6 +118,10 @@ _datas = [
     # resource_path("bundled/fonts") -> sys._MEIPASS / "bundled/fonts"
     (str(SRC / "bundled"),          "bundled"),
     (str(SRC / "ui" / "resources"), "ui/resources"),
+    (str(_OPENMM_APP_DATA), "openmm/app/data"),
+    (str(_PDBFIXER_TEMPLATES), "pdbfixer/templates"),
+    (str(_PDBFIXER_SOFT_XML), "pdbfixer"),
+    (str(_MEEKO_DATA), "meeko/data"),
 ]
 
 # Bundle QtWebEngine resources (.pak files, icudtl.dat, v8 snapshots, locales)

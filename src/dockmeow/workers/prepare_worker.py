@@ -7,6 +7,7 @@ window stays responsive and progress can be streamed via signals.
 from __future__ import annotations
 
 from pathlib import Path
+import traceback
 
 from PySide6.QtCore import QThread, Signal
 
@@ -49,8 +50,10 @@ class PrepareReceptorWorker(QThread):
             )
             self.finished_ok.emit(info)
         except DockMeowError as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
             self.failed.emit(e.user_message, getattr(e, "suggestion", "") or "")
         except Exception as e:  # noqa: BLE001
+            traceback.print_exception(type(e), e, e.__traceback__)
             self.failed.emit(f"受体准备失败：{e}", "请检查 PDB 文件是否完整。")
 
 
@@ -95,6 +98,8 @@ class PrepareLigandWorker(QThread):
                 )
             self.finished_ok.emit(info)
         except DockMeowError as e:
+            traceback.print_exception(type(e), e, e.__traceback__)
             self.failed.emit(e.user_message, getattr(e, "suggestion", "") or "")
         except Exception as e:  # noqa: BLE001
+            traceback.print_exception(type(e), e, e.__traceback__)
             self.failed.emit(f"配体准备失败：{e}", "请检查输入是否为有效的 SMILES 或分子文件。")

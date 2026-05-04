@@ -152,7 +152,8 @@ def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
     # Copy the PDB into work_dir so output lands there (keeps temp directories clean).
     import shutil as _shutil
     local_pdb = work_dir / receptor_pdb.name
-    _shutil.copy2(receptor_pdb, local_pdb)
+    if receptor_pdb.resolve() != local_pdb.resolve():
+        _shutil.copy2(receptor_pdb, local_pdb)
 
     out_dir = work_dir / f"{local_pdb.stem}_out"
     cmd = [str(binary), "-f", str(local_pdb)]
