@@ -162,6 +162,10 @@ class LigandPage(QWidget):
         self._start_smiles(smi, "ligand")
 
     def _on_file(self, path: Path) -> None:
+        if not path.exists():
+            self._status.setText(f"文件不存在：{path.name}")
+            self._status.setStyleSheet("color: #F38BA8;")
+            return
         self._start_file(path)
 
     def _on_example_pick(self, item: QListWidgetItem) -> None:
@@ -190,5 +194,7 @@ class LigandPage(QWidget):
 
     def _on_failed(self, user_message: str, suggestion: str) -> None:
         self._progress.setVisible(False)
-        self._status.setText(f"{user_message}\n{suggestion}")
+        msg = user_message or "配体处理失败。"
+        hint = suggestion or ""
+        self._status.setText(f"{msg}\n{hint}" if hint else msg)
         self._status.setStyleSheet("color: #F38BA8;")

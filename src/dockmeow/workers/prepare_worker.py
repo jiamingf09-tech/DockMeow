@@ -25,10 +25,16 @@ class PrepareReceptorWorker(QThread):
     finished_ok = Signal(object)       # ReceptorInfo
     failed = Signal(str, str)          # user_message, suggestion
 
-    def __init__(self, input_pdb: Path, work_dir: Path) -> None:
+    def __init__(
+        self,
+        input_pdb: Path,
+        work_dir: Path,
+        strip_nucleic_acids: bool = False,
+    ) -> None:
         super().__init__()
         self._input_pdb = Path(input_pdb)
         self._work_dir = Path(work_dir)
+        self._strip_nucleic_acids = strip_nucleic_acids
 
     def run(self) -> None:
         try:
@@ -36,7 +42,10 @@ class PrepareReceptorWorker(QThread):
                 self.progress.emit(stage, int(pct), msg)
 
             info = prepare_receptor(
-                self._input_pdb, self._work_dir, progress_callback=cb
+                self._input_pdb,
+                self._work_dir,
+                progress_callback=cb,
+                strip_nucleic_acids=self._strip_nucleic_acids,
             )
             self.finished_ok.emit(info)
         except DockMeowError as e:

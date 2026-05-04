@@ -22,6 +22,12 @@ from dockmeow.core.exceptions import ReceptorPreparationError
 
 _log = logging.getLogger(__name__)
 
+# DNA and RNA residue names — these are NOT standard amino acids and will
+# cause PDBFixer's replaceNonstandardResidues() to raise KeyError.
+_DNA_RESNAMES = frozenset({"DA", "DC", "DG", "DT", "DI", "DU"})
+_RNA_RESNAMES = frozenset({"A", "C", "G", "U", "I"})
+_NUCLEIC_RESNAMES = _DNA_RESNAMES | _RNA_RESNAMES
+
 # Residues that must never be mistaken for a drug-like co-crystal ligand.
 # Sources: PDB Chemical Component Dictionary common contaminants list +
 #          common crystallography additives.
@@ -79,6 +85,7 @@ class ReceptorInfo:
     hetero_groups: list[HeteroGroup] = field(default_factory=list)
     waters_removed: int = 0
     warnings: list[str] = field(default_factory=list)
+    nucleic_acid_chains: list[str] = field(default_factory=list)  # DNA/RNA chains detected
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +215,46 @@ def _strip_hetatm(
     return "".join(lines_out), waters_removed
 
 
+def detect_nucleic_acid_chains(pdb_path: Path) -> list[str]:
+    """Scan a PDB file and return chain IDs that contain DNA/RNA residues."""
+    na_chains: set[str] = set()
+    try:
+        text = pdb_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    for line in text.splitlines():
+        if not line.startswith(("ATOM  ", "ATOM", "HETATM")):
+            continue
+        if len(line) < 26:
+            continue
+        resname = line[17:20].strip()
+        chain = line[21].strip() or " "
+        if resname in _NUCLEIC_RESNAMES:
+            na_chains.add(chain)
+    return sorted(na_chains)
+
+
+def strip_nucleic_acid_chains(pdb_text: str) -> str:
+    """Return a copy of pdb_text with all DNA/RNA ATOM/HETATM records removed.
+
+    Also removes TER records that reference a stripped DNA/RNA residue, since a
+    dangling TER line confuses PDBFixer's PDB parser.
+    """
+    out: list[str] = []
+    for line in pdb_text.splitlines(keepends=True):
+        if line.startswith(("ATOM  ", "ATOM", "HETATM")):
+            resname = line[17:20].strip() if len(line) >= 20 else ""
+            if resname in _NUCLEIC_RESNAMES:
+                continue
+        elif line.startswith("TER"):
+            # TER records carry the trailing residue name in cols 18-20
+            resname = line[17:20].strip() if len(line) >= 20 else ""
+            if resname in _NUCLEIC_RESNAMES:
+                continue
+        out.append(line)
+    return "".join(out)
+
+
 def _run_pdbfixer(
     input_pdb: Path,
     output_pdb: Path,
@@ -226,20 +273,54 @@ def _run_pdbfixer(
 
     try:
         fixer = PDBFixer(filename=str(input_pdb))
+    except Exception as exc:
+        raise ReceptorPreparationError(
+            f"PDBFixer cannot load file: {exc}",
+            "PDB 文件无法解析，请确认文件格式正确。",
+            "请从 RCSB PDB 重新下载标准格式文件，或在 PyMOL 中另存为 PDB。",
+        ) from exc
+
+    try:
         fixer.findMissingResidues()
+    except Exception as exc:
+        _log.warning("PDBFixer findMissingResidues failed (%s), continuing", exc)
+        warnings.append(f"缺失残基检测失败（{exc}），已跳过。")
+
+    try:
         fixer.findNonstandardResidues()
+        if hasattr(fixer, "nonstandardResidues"):
+            fixer.nonstandardResidues = [
+                (res, name)
+                for res, name in fixer.nonstandardResidues
+                if res.name not in _NUCLEIC_RESNAMES
+            ]
         fixer.replaceNonstandardResidues()
-        fixer.removeHeterogens(keepWater=False)  # we handle HETATM ourselves after
+    except KeyError as exc:
+        _log.warning("PDBFixer replaceNonstandardResidues KeyError (%s), skipping", exc)
+        warnings.append(f"非标准残基 {exc} 替换失败（可能是修饰氨基酸或未知残基），已跳过。")
+    except Exception as exc:
+        _log.warning("PDBFixer replaceNonstandardResidues failed (%s), skipping", exc)
+        warnings.append(f"非标准残基替换失败（{exc}），已跳过。")
+
+    try:
+        fixer.removeHeterogens(keepWater=False)
+    except Exception as exc:
+        _log.warning("PDBFixer removeHeterogens failed (%s), skipping", exc)
+        warnings.append(f"杂原子移除失败（{exc}），已跳过。")
+
+    try:
         fixer.findMissingAtoms()
         if add_missing_atoms:
             fixer.addMissingAtoms()
+    except Exception as exc:
+        _log.warning("PDBFixer addMissingAtoms failed (%s), skipping", exc)
+        warnings.append(f"缺失原子补全失败（{exc}），已跳过。")
+
+    try:
         fixer.addMissingHydrogens(ph)
     except Exception as exc:
-        raise ReceptorPreparationError(
-            f"PDBFixer failed: {exc}",
-            "PDB 文件修复失败，请检查文件格式是否正确。",
-            "尝试在 RCSB PDB 网站重新下载标准 PDB 文件。",
-        ) from exc
+        _log.warning("PDBFixer addMissingHydrogens failed (%s), skipping", exc)
+        warnings.append(f"氢原子添加失败（{exc}），已跳过。")
 
     if cb:
         cb("受体准备", 40, "PDBFixer 修复完成，写出临时文件…")
@@ -255,9 +336,6 @@ def _run_pdbfixer(
             "写出修复后的 PDB 文件时出错。",
         ) from exc
 
-    # Strip alternate-location indicators: meeko's DetermineConnectivity
-    # can create spurious bonds when atoms from different altloc sets end up
-    # in close proximity after addMissingAtoms (seen with 4DFR-type structures).
     cleaned_lines: list[str] = []
     for line in pdb_raw.splitlines(keepends=True):
         if line.startswith(("ATOM", "HETATM")) and len(line) > 16 and line[16] not in (" ", ""):
@@ -411,18 +489,19 @@ def prepare_receptor(
     add_missing_atoms: bool = True,
     ph: float = 7.4,
     progress_callback: Callable[[str, int, str], None] | None = None,
+    strip_nucleic_acids: bool = False,
 ) -> ReceptorInfo:
     """Prepare a PDB receptor for AutoDock Vina docking.
 
     Args:
-        input_pdb:         Path to the raw PDB file.
-        work_dir:          Directory for intermediate and output files.
-        keep_hetero:       List of (resname, chain, resi) tuples to preserve.
-                           All other HETATM records are removed.
-        remove_waters:     Strip HOH records when True.
-        add_missing_atoms: Run PDBFixer addMissingAtoms / addMissingHydrogens.
-        ph:                pH value passed to PDBFixer protonation.
-        progress_callback: Called as ``cb(stage, percent, message)``.
+        input_pdb:            Path to the raw PDB file.
+        work_dir:             Directory for intermediate and output files.
+        keep_hetero:          List of (resname, chain, resi) tuples to preserve.
+        remove_waters:        Strip HOH records when True.
+        add_missing_atoms:    Run PDBFixer addMissingAtoms / addMissingHydrogens.
+        ph:                   pH value passed to PDBFixer protonation.
+        progress_callback:    Called as ``cb(stage, percent, message)``.
+        strip_nucleic_acids:  If True, remove DNA/RNA chains before PDBFixer.
 
     Returns:
         ReceptorInfo with paths and metadata.
@@ -454,27 +533,48 @@ def prepare_receptor(
     hetero_groups = _parse_hetero_groups(raw_text)
     _log.debug("Found %d HETATM groups in %s", len(hetero_groups), input_pdb.name)
 
-    # Run PDBFixer on the raw copy; it will remove all heterogens internally,
-    # but we want to know the original HETATM groups for the UI, so we
-    # parse them before fixing.
-    warnings = _run_pdbfixer(raw_copy, fixed_pdb, add_missing_atoms, ph, cb)
+    # Detect nucleic acid chains
+    na_chains = detect_nucleic_acid_chains(raw_copy)
+    warnings: list[str] = []
 
-    # Strip HETATM from the fixed PDB according to caller's policy
-    # (PDBFixer already stripped them, but re-apply to be safe)
+    if na_chains and strip_nucleic_acids:
+        stripped_text = strip_nucleic_acid_chains(raw_text)
+        raw_copy.write_text(stripped_text, encoding="utf-8")
+        warnings.append(
+            f"已自动移除核酸链（DNA/RNA）：{', '.join(na_chains)}。"
+            f"如需对接蛋白-核酸界面，请手动保留并注意处理限制。"
+        )
+        _log.info("Stripped nucleic acid chains %s from %s", na_chains, input_pdb.name)
+    elif na_chains and not strip_nucleic_acids:
+        warnings.append(
+            f"检测到核酸链：{', '.join(na_chains)}。"
+            f"PDB 含 DNA/RNA 时建议选择「移除核酸链」以确保处理成功。"
+        )
+
+    fixer_warnings = _run_pdbfixer(raw_copy, fixed_pdb, add_missing_atoms, ph, cb)
+    warnings.extend(fixer_warnings)
+
     fixed_text = fixed_pdb.read_text(encoding="utf-8", errors="replace")
-
-    if remove_waters:
-        cleaned_text, n_waters = _strip_hetatm(fixed_text, keep=keep_hetero)
-    else:
-        # Only strip non-water HETATM not in keep list
-        cleaned_text, n_waters = _strip_hetatm(fixed_text, keep=keep_hetero)
-
+    cleaned_text, n_waters = _strip_hetatm(fixed_text, keep=keep_hetero)
     clean_pdb.write_text(cleaned_text, encoding="utf-8")
 
     chains, n_residues = _get_chains_and_residues(cleaned_text)
 
     meeko_warnings = _pdb_to_pdbqt(clean_pdb, output_pdbqt, cb, original_pdb=raw_copy)
     warnings.extend(meeko_warnings)
+
+    # Auto-retry without addMissingAtoms if PDBQT came out empty (meeko's
+    # template matching fails when PDBFixer over-extends a structure).
+    if add_missing_atoms and output_pdbqt.exists() and output_pdbqt.stat().st_size == 0:
+        _log.warning("PDBQT empty after first attempt; retrying without addMissingAtoms")
+        warnings.append("PDBQT 首次生成为空，已自动以「不补全缺失原子」模式重试。")
+        _run_pdbfixer(raw_copy, fixed_pdb, False, ph, cb)
+        fixed_text2 = fixed_pdb.read_text(encoding="utf-8", errors="replace")
+        cleaned_text2, _ = _strip_hetatm(fixed_text2, keep=keep_hetero)
+        clean_pdb.write_text(cleaned_text2, encoding="utf-8")
+        meeko_warnings2 = _pdb_to_pdbqt(clean_pdb, output_pdbqt, cb, original_pdb=raw_copy)
+        warnings.extend(meeko_warnings2)
+        chains, n_residues = _get_chains_and_residues(cleaned_text2)
 
     if cb:
         cb("受体准备", 100, "受体准备完成。")
@@ -487,9 +587,10 @@ def prepare_receptor(
         hetero_groups=hetero_groups,
         waters_removed=n_waters,
         warnings=warnings,
+        nucleic_acid_chains=na_chains,
     )
     _log.info(
-        "Receptor prepared: %s | chains=%s residues=%d",
-        output_pdbqt.name, chains, n_residues,
+        "Receptor prepared: %s | chains=%s residues=%d na_chains=%s",
+        output_pdbqt.name, chains, n_residues, na_chains,
     )
     return info

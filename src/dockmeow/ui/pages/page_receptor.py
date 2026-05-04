@@ -9,12 +9,14 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QMessageBox,
     QProgressBar,
     QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
+from dockmeow.core.receptor import detect_nucleic_acid_chains
 from dockmeow.ui.i18n import t
 from dockmeow.ui.widgets.drop_zone import DropZone
 from dockmeow.ui.widgets.viewer_3d import Viewer3D
@@ -83,6 +85,24 @@ class ReceptorPage(QWidget):
         self._pdb_path = path
         self._hetero_list.clear()
         self._warnings.clear()
+
+        # Quick pre-scan for nucleic acid chains (no PDBFixer needed)
+        na_chains = detect_nucleic_acid_chains(path)
+        strip_na = False
+        if na_chains:
+            chains_str = ", ".join(na_chains)
+            reply = QMessageBox.question(
+                self,
+                "检测到 DNA/RNA 链",
+                f"PDB 文件包含核酸链：{chains_str}\n\n"
+                f"分子对接通常只针对蛋白质部分。是否自动移除核酸链？\n\n"
+                f"• 选「是」：移除 DNA/RNA，对接蛋白质部分（推荐）\n"
+                f"• 选「否」：保留全部（可能导致后续处理失败）",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            strip_na = reply == QMessageBox.StandardButton.Yes
+
         self._status.setText(t("receptor.preparing"))
         self._progress.setValue(0)
         self._progress.setVisible(True)
@@ -90,7 +110,7 @@ class ReceptorPage(QWidget):
         work_dir = user_workspace() / "receptor"
         work_dir.mkdir(parents=True, exist_ok=True)
 
-        self._worker = PrepareReceptorWorker(path, work_dir)
+        self._worker = PrepareReceptorWorker(path, work_dir, strip_nucleic_acids=strip_na)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished_ok.connect(self._on_done)
         self._worker.failed.connect(self._on_failed)
@@ -103,7 +123,11 @@ class ReceptorPage(QWidget):
     def _on_done(self, info) -> None:
         self._receptor_info = info
         self._progress.setVisible(False)
-        self._status.setText("受体准备完成。")
+        na_chains = getattr(info, "nucleic_acid_chains", [])
+        if na_chains:
+            self._status.setText(f"受体准备完成。（核酸链 {', '.join(na_chains)} 已处理）")
+        else:
+            self._status.setText("受体准备完成。")
 
         for h in getattr(info, "hetero_groups", []) or []:
             tag = "★ " if getattr(h, "is_likely_ligand", False) else ""
@@ -113,7 +137,6 @@ class ReceptorPage(QWidget):
         for w in getattr(info, "warnings", []) or []:
             self._warnings.addItem(w)
 
-        # Display the original PDB (with HETATM) in the viewer.
         if self._pdb_path is not None:
             self._viewer.load_receptor(self._pdb_path)
 
