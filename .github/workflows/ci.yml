@@ -24,20 +24,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Provides Python 3.11 + Boost C++ headers via conda-forge so vina can
-      # compile from source on macOS arm64 and Windows (no pre-built wheels).
-      # On Linux a manylinux wheel is available, but micromamba is used for
-      # consistency across the matrix.
+      # Install vina from conda-forge (pre-built binary for all platforms).
+      # pip will see it as already satisfied and skip source compilation,
+      # avoiding the SWIG + Boost build issues on macOS arm64 and Windows.
       - uses: mamba-org/setup-micromamba@v2
         with:
           micromamba-version: latest
           environment-name: dockmeow-ci
           create-args: >-
             python=3.11
-            boost-cpp
+            vina
           condarc: |
             channels:
               - conda-forge
+
+      # PySide6 requires libEGL at import time on headless Linux runners.
+      - name: Install Qt system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -y && sudo apt-get install -y libegl1
 
       - name: Install dev dependencies
         run: pip install -e ".[dev]"
