@@ -16,6 +16,7 @@ dependencies = [
     "meeko>=0.7,<0.8",      # 0.7 changed receptor prep to Polymer API and write_string to 3-tuple
     "rdkit>=2024.3.1",
     "pdbfixer>=1.9",
+    "gemmi>=0.6",            # runtime dep of pdbfixer>=1.9 (not declared by pdbfixer)
     "openmm>=8.1",
     "numpy>=1.26",
     "py3Dmol>=2.1",

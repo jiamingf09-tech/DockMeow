@@ -26,14 +26,58 @@ jobs:
         with:
           python-version: "3.11"
 
-      # vina pip sdist requires Boost + SWIG. On macOS arm64 homebrew provides
-      # both; setting CONDA_PREFIX to the brew prefix makes vina's setup.py
-      # find the headers at $CONDA_PREFIX/include/boost.
-      - name: Install Boost + SWIG (macOS)
-        if: runner.os == 'macOS'
+      # ── macOS arm64: vina has no PyPI wheel; install from conda-forge ─────
+      # Mirrors the approach in release.yml: Miniforge3 + conda install vina,
+      # then copy vina + dist-info into the actions-python site-packages so
+      # pip sees vina as already satisfied.
+      - name: Install vina via conda (macOS arm64)
+        if: matrix.os == 'macos-14' && matrix.arch == 'arm64'
+        shell: bash
         run: |
-          brew install boost swig
-          echo "CONDA_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
+          # Capture pip SP before conda changes $PATH / 'python'
+          PIP_SP="$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
+
+          curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh \
+            -o /tmp/miniforge.sh
+          bash /tmp/miniforge.sh -b -p "${HOME}/miniforge3"
+          source "${HOME}/miniforge3/etc/profile.d/conda.sh"
+          conda create -y -n dockmeow python=3.11
+          conda activate dockmeow
+          conda install -y -c conda-forge vina boost-cpp
+
+          # Copy vina package + dist-info so 'pip install -e .' skips re-building it
+          CONDA_SP="${HOME}/miniforge3/envs/dockmeow/lib/python3.11/site-packages"
+          cp -r "${CONDA_SP}/vina" "${PIP_SP}/"
+          for d in "${CONDA_SP}"/vina-*.dist-info; do
+            [[ -d "$d" ]] && cp -r "$d" "${PIP_SP}/"
+          done
+          echo "Installed vina into ${PIP_SP}"
+
+          # Expose boost dylibs so vina can load them at test runtime
+          echo "DYLD_LIBRARY_PATH=${HOME}/miniforge3/envs/dockmeow/lib" >> "${GITHUB_ENV}"
+
+      # ── Linux: PySide6 needs libEGL on headless runners ──────────────────
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y libegl1
+
+      # ── Windows: vina pip sdist requires MSVC + Boost which CI lacks.
+      # Create a stub dist-info so pip treats vina as satisfied and the rest
+      # of the deps + editable install succeed.
+      - name: Pre-install vina or stub it (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          pip install vina || python - << 'PYEOF'
+          import pathlib, site
+          sp = pathlib.Path(site.getsitepackages()[0])
+          di = sp / "vina-1.2.7.dist-info"
+          di.mkdir(exist_ok=True)
+          (di / "METADATA").write_text("Metadata-Version: 2.1\nName: vina\nVersion: 1.2.7\n")
+          (di / "RECORD").write_text("")
+          (di / "INSTALLER").write_text("pip")
+          print(f"Stub vina dist-info created at {di}")
+          PYEOF
 
       - name: Install dev dependencies
         run: pip install -e ".[dev]"
@@ -43,9 +87,8 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ --tb=short --cov=dockmeow --cov-report=term-missing
-        # Stage 1: core tests only; expand in later stages
 
-      # ── fpocket smoke test (Linux + macOS only; no Windows binary) ──────────
+      # ── fpocket smoke test (Linux + macOS only; no Windows binary) ────────
       - name: fpocket smoke test
         if: runner.os != 'Windows'
         shell: bash
