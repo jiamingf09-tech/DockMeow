@@ -176,15 +176,18 @@ class TestPlatformFactors:
             with patch("dockmeow.licensing.machine.Path") as mock_path_cls:
                 mock_net = mock_path_cls.return_value
                 mock_net.exists.return_value = True
-                mock_iface = type("Iface", (), {
-                    "name": "eth0",
-                    "startswith": lambda self, x: False,
-                })()
                 addr_file = type("AF", (), {
                     "exists": lambda self: True,
                     "read_text": lambda self: "02:11:22:33:44:55\n",
                 })()
-                mock_iface.__truediv__ = lambda self, x: addr_file
+
+                class MockIface:
+                    name = "eth0"
+
+                    def __truediv__(self, _name):
+                        return addr_file
+
+                mock_iface = MockIface()
                 mock_net.__iter__ = lambda self: iter([mock_iface])
                 result = _factor_mac()
             assert result != ""

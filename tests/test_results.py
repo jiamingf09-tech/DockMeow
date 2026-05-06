@@ -6,6 +6,8 @@ import pytest
 
 from dockmeow.core.results import export_poses_pdb, split_poses_to_sdf
 
+pytest.importorskip("vina")
+
 
 class TestSplitPosesToSdf:
     def test_returns_list_of_paths(self, tmp_path, docking_result):

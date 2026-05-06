@@ -7,6 +7,8 @@ import pytest
 from dockmeow.core.docking import DockingConfig, DockingResult, run_docking
 from dockmeow.core.exceptions import DockingExecutionError
 
+pytest.importorskip("vina")
+
 
 @pytest.fixture(scope="module")
 def docking_result(tmp_path_factory, prepared_receptor, prepared_ligand):

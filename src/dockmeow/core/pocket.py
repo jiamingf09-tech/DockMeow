@@ -166,6 +166,12 @@ def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
             timeout=120,
             cwd=str(work_dir),
         )
+    except OSError as exc:
+        raise PocketDetectionError(
+            f"fpocket could not execute: {exc}",
+            "fpocket 二进制无法执行。",
+            "已自动使用全蛋白盲对接盒子。",
+        ) from exc
     except subprocess.TimeoutExpired as exc:
         raise PocketDetectionError(
             "fpocket timed out",

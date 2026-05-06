@@ -164,6 +164,18 @@ class TestFpocketMocked:
         assert pockets[-1].source == "whole"
         assert not any(p.source == "fpocket" for p in pockets)
 
+    def test_fpocket_exec_error_falls_back_to_whole(
+        self, prepared_receptor, fake_binary: Path
+    ) -> None:
+        """Invalid or incompatible fpocket binaries trigger whole-protein fallback."""
+        with patch("dockmeow.utils.paths.fpocket_binary", return_value=fake_binary), \
+             patch("dockmeow.core.pocket.subprocess.run", side_effect=OSError("bad exe")):
+            pockets = detect_pockets(prepared_receptor)
+
+        assert len(pockets) >= 1
+        assert pockets[-1].source == "whole"
+        assert not any(p.source == "fpocket" for p in pockets)
+
     def test_fpocket_binary_missing_falls_back_to_whole(
         self, prepared_receptor, tmp_path: Path
     ) -> None:
