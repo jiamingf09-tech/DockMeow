@@ -12,9 +12,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14,        arch: arm64   }
-          - { os: windows-latest,  arch: x86_64  }
-          - { os: ubuntu-22.04,    arch: x86_64  }
+          # conda-forge has pre-built vina for macOS arm64 and Linux x86_64
+          - os: macos-14
+            arch: arm64
+            conda_pkgs: "python=3.11 vina scipy"
+          - os: ubuntu-22.04
+            arch: x86_64
+            conda_pkgs: "python=3.11 vina scipy"
+          # vina is not on conda-forge for Windows; provide SWIG + Boost so
+          # pip can compile it from source using the MSVC toolchain.
+          - os: windows-latest
+            arch: x86_64
+            conda_pkgs: "python=3.11 swig boost-cpp scipy"
     runs-on: ${{ matrix.os }}
 
     defaults:
@@ -24,21 +33,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install vina from conda-forge (pre-built binary for all platforms).
-      # pip will see it as already satisfied and skip source compilation,
-      # avoiding the SWIG + Boost build issues on macOS arm64 and Windows.
       - uses: mamba-org/setup-micromamba@v2
         with:
           micromamba-version: latest
           environment-name: dockmeow-ci
-          create-args: >-
-            python=3.11
-            vina
+          create-args: ${{ matrix.conda_pkgs }}
           condarc: |
             channels:
               - conda-forge
 
-      # PySide6 requires libEGL at import time on headless Linux runners.
+      # On Windows conda-forge installs Boost headers under Library/include,
+      # but vina's setup.py looks for $CONDA_PREFIX/include/boost.
+      - name: Fix Boost include path (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir -p "$CONDA_PREFIX/include"
+          cp -r "$CONDA_PREFIX/Library/include/boost" "$CONDA_PREFIX/include/" 2>/dev/null || true
+
+      # PySide6 requires libEGL.so.1 at import time on headless Linux runners.
       - name: Install Qt system dependencies (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update -y && sudo apt-get install -y libegl1
