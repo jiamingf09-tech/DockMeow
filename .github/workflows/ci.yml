@@ -17,12 +17,27 @@ jobs:
           - { os: ubuntu-22.04,    arch: x86_64  }
     runs-on: ${{ matrix.os }}
 
+    defaults:
+      run:
+        shell: bash -el {0}
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # Provides Python 3.11 + Boost C++ headers via conda-forge so vina can
+      # compile from source on macOS arm64 and Windows (no pre-built wheels).
+      # On Linux a manylinux wheel is available, but micromamba is used for
+      # consistency across the matrix.
+      - uses: mamba-org/setup-micromamba@v2
         with:
-          python-version: "3.11"
+          micromamba-version: latest
+          environment-name: dockmeow-ci
+          create-args: >-
+            python=3.11
+            boost-cpp
+          condarc: |
+            channels:
+              - conda-forge
 
       - name: Install dev dependencies
         run: pip install -e ".[dev]"
@@ -37,7 +52,6 @@ jobs:
       # ── fpocket smoke test (Linux + macOS only; no Windows binary) ──────────
       - name: fpocket smoke test
         if: runner.os != 'Windows'
-        shell: bash
         run: |
           python - << 'PYEOF'
           import subprocess, sys, tempfile, shutil

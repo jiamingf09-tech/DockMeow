@@ -23,7 +23,6 @@ from dockmeow.ui.widgets.drop_zone import DropZone
 from dockmeow.utils.paths import user_workspace
 from dockmeow.workers.prepare_worker import PrepareLigandWorker
 
-
 _EXAMPLES: list[tuple[str, str]] = [
     ("阿司匹林", "CC(=O)Oc1ccccc1C(O)=O"),
     ("布洛芬", "CC(C)Cc1ccc(C(C)C(O)=O)cc1"),

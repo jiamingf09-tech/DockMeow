@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import sys
 import logging as _logging
+import sys
 import traceback as _traceback
 
 from PySide6.QtCore import Qt

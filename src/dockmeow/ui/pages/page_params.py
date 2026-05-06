@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
@@ -18,7 +17,6 @@ from PySide6.QtWidgets import (
 )
 
 from dockmeow.ui.i18n import t
-
 
 _SPEED_VALUES = [8, 16, 32, 64]
 _SPEED_LABELS = [

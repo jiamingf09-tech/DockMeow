@@ -35,13 +35,13 @@ from dockmeow.core.docking import DockingConfig
 from dockmeow.ui.dialogs.about_dialog import AboutDialog
 from dockmeow.ui.dialogs.activation_dialog import ActivationDialog
 from dockmeow.ui.i18n import t
-from dockmeow.utils.paths import resource_path
 from dockmeow.ui.pages.page_ligand import LigandPage
 from dockmeow.ui.pages.page_params import ParamsPage
 from dockmeow.ui.pages.page_pocket import PocketPage
 from dockmeow.ui.pages.page_receptor import ReceptorPage
 from dockmeow.ui.pages.page_results import ResultsPage
 from dockmeow.ui.pages.page_run import RunPage
+from dockmeow.utils.paths import resource_path
 from dockmeow.version import __version__
 
 

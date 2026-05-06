@@ -108,16 +108,21 @@ def generate_pdf_report(
     _register_chinese_fonts()
 
     from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import cm
-    from reportlab.platypus import (
-        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-        Image, PageBreak, HRFlowable,
-    )
-    from reportlab.platypus.flowables import Flowable
     from reportlab.pdfgen.canvas import Canvas
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.platypus import (
+        HRFlowable,
+        Image,
+        PageBreak,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -128,7 +133,6 @@ def generate_pdf_report(
     _FB = "NotoSansSC-Bold"
 
     # ---- Styles ----
-    styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         "title",
         fontName=_FB,
@@ -144,12 +148,6 @@ def generate_pdf_report(
         leading=18,
         spaceBefore=0.5 * cm,
         spaceAfter=0.2 * cm,
-    )
-    body_style = ParagraphStyle(
-        "body",
-        fontName=_F,
-        fontSize=10,
-        leading=14,
     )
     small_style = ParagraphStyle(
         "small",
@@ -240,8 +238,16 @@ def generate_pdf_report(
         ["", "可旋转键", str(data.ligand.n_rotatable)],
         ["", "SMILES", _truncate(data.ligand.smiles, 60)],
         ["口袋", "来源", data.pocket.source],
-        ["", "中心 (Å)", f"{data.pocket.center[0]:.2f}, {data.pocket.center[1]:.2f}, {data.pocket.center[2]:.2f}"],
-        ["", "大小 (Å)", f"{data.pocket.size[0]:.1f} × {data.pocket.size[1]:.1f} × {data.pocket.size[2]:.1f}"],
+        ["", "中心 (Å)", (
+            f"{data.pocket.center[0]:.2f}, "
+            f"{data.pocket.center[1]:.2f}, "
+            f"{data.pocket.center[2]:.2f}"
+        )],
+        ["", "大小 (Å)", (
+            f"{data.pocket.size[0]:.1f} × "
+            f"{data.pocket.size[1]:.1f} × "
+            f"{data.pocket.size[2]:.1f}"
+        )],
     ]
     sum_table = Table(summary_rows, colWidths=[3 * cm, 4 * cm, 9 * cm])
     sum_table.setStyle(TableStyle([
@@ -425,7 +431,10 @@ def generate_report(
             source="config",
         )
     else:
-        pocket = Pocket(pocket_id=1, center=(0.0, 0.0, 0.0), size=(20.0, 20.0, 20.0), score=0.0, source="unknown")
+        pocket = Pocket(
+            pocket_id=1, center=(0.0, 0.0, 0.0),
+            size=(20.0, 20.0, 20.0), score=0.0, source="unknown",
+        )
 
     # Try to get user info from installed license
     if not user_email or not license_id:

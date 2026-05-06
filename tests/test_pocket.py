@@ -8,12 +8,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dockmeow.core.pocket import (
-    _box_from_coords,
-    _parse_pdb_coords,
+    Pocket,
     _run_fpocket,
     detect_pockets,
     whole_protein_box,
-    Pocket,
 )
 from dockmeow.utils.paths import fpocket_binary
 

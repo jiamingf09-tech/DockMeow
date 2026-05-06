@@ -136,7 +136,10 @@ def run_docking(
     sx, sy, sz = config.size
 
     if cb:
-        cb("分子对接", 30, f"设置对接盒子：中心({cx:.1f},{cy:.1f},{cz:.1f}) 大小({sx:.0f},{sy:.0f},{sz:.0f})Å…")
+        cb(
+            "分子对接", 30,
+            f"设置对接盒子：中心({cx:.1f},{cy:.1f},{cz:.1f}) 大小({sx:.0f},{sy:.0f},{sz:.0f})Å…",
+        )
 
     try:
         v.compute_vina_maps(

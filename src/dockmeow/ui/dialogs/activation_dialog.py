@@ -95,7 +95,10 @@ class ActivationDialog(QDialog):
         info = "\n".join(
             [
                 t("activation.success"),
-                t("activation.license_no", no=str(data.get("license_no") or data.get("license_id", ""))),
+                t(
+                    "activation.license_no",
+                    no=str(data.get("license_no") or data.get("license_id", "")),
+                ),
                 t("activation.email", email=str(data.get("email", ""))),
                 t("activation.type", type=str(data.get("type", ""))),
             ]

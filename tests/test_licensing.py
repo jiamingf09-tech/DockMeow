@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import json
-import shutil
 import time
 import uuid
 from pathlib import Path
@@ -12,9 +11,9 @@ from unittest.mock import patch
 
 import pytest
 
+from dockmeow.core.exceptions import LicenseError
 from dockmeow.licensing.machine import get_machine_factors
 from dockmeow.licensing.verifier import LicenseVerifier, _canonical, activate
-from dockmeow.core.exceptions import LicenseError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -159,7 +158,7 @@ class TestLicenseVerifier:
     def test_missing_signature_raises(self, tmp_path):
         payload = _make_payload()
         del payload["signature"]
-        path = _write_dmlic(tmp_path, payload)
+        _write_dmlic(tmp_path, payload)
         v = LicenseVerifier()
         with pytest.raises(LicenseError, match="missing signature"):
             v.verify_signature(payload)

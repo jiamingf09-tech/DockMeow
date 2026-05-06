@@ -35,6 +35,7 @@ def _derive_key() -> bytes:
     """Derive a 32-byte AES key from the current machine's identity."""
     from cryptography.hazmat.primitives.hashes import SHA256
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
     from dockmeow.licensing.machine import get_machine_id
 
     ikm = get_machine_id().encode("utf-8")

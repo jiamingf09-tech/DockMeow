@@ -263,8 +263,8 @@ def _run_pdbfixer(
     cb: Callable | None,
 ) -> list[str]:
     """Run PDBFixer and return a list of warning strings."""
-    from pdbfixer import PDBFixer
     from openmm.app import PDBFile
+    from pdbfixer import PDBFixer
 
     warnings: list[str] = []
 
@@ -371,9 +371,13 @@ def _pdb_to_pdbqt(
         List of warning strings emitted by meeko for skipped residues.
     """
     import logging as _logging
+
     from meeko import (
-        Polymer, PolymerCreationError, PDBQTWriterLegacy,
-        MoleculePreparation, ResidueChemTemplates,
+        MoleculePreparation,
+        PDBQTWriterLegacy,
+        Polymer,
+        PolymerCreationError,
+        ResidueChemTemplates,
     )
 
     if cb:

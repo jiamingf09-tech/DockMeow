@@ -6,8 +6,8 @@ window stays responsive and progress can be streamed via signals.
 
 from __future__ import annotations
 
-from pathlib import Path
 import traceback
+from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 

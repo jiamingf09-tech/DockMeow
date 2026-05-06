@@ -68,9 +68,9 @@ def _mol_to_3d(mol, name: str):
 
 def _mol_to_pdbqt(mol, name: str, work_dir: Path) -> LigandInfo:
     """Convert an RDKit Mol (with 3D coords) to PDBQT via meeko."""
+    from meeko import MoleculePreparation, PDBQTWriterLegacy
     from rdkit import Chem
     from rdkit.Chem import Descriptors
-    from meeko import MoleculePreparation, PDBQTWriterLegacy
 
     stem = safe_name(name)
     output_pdbqt = work_dir / f"{stem}.pdbqt"

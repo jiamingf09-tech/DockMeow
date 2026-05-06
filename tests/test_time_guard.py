@@ -5,8 +5,6 @@ from __future__ import annotations
 import time
 from unittest.mock import patch
 
-import pytest
-
 
 class TestCheckClockIntegrity:
     # time_guard uses lazy imports inside functions, so we patch at the state module.

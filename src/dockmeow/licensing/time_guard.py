@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import time
 
-from dockmeow.core.exceptions import TimeAnomalyError
-
 CLOCK_TOLERANCE_SECONDS: int = 3600
 _ANCHOR_KEY = "time_anchor"
 

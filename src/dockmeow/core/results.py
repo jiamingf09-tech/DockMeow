@@ -13,7 +13,6 @@ import logging
 from pathlib import Path
 
 from dockmeow.core.docking import DockingResult
-from dockmeow.core.exceptions import DockMeowError
 
 _log = logging.getLogger(__name__)
 
@@ -76,7 +75,7 @@ def export_poses_pdb(result: DockingResult, output_dir: Path) -> list[Path]:
             or line.strip() == "ENDMDL"
         ]
         # Keep only ATOM/HETATM for a minimal PDB
-        atom_lines = [l for l in pdb_lines if l.startswith(("ATOM  ", "HETATM"))]
+        atom_lines = [ln for ln in pdb_lines if ln.startswith(("ATOM  ", "HETATM"))]
         if not atom_lines:
             continue
         out = output_dir / f"pose_{i:02d}.pdb"

@@ -4,8 +4,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 _DATA = Path(__file__).parent / "data" / "real_world"
 _SRC = Path(__file__).parent.parent / "src"
 if str(_SRC) not in sys.path:

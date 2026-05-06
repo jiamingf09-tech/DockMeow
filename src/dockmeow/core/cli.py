@@ -77,13 +77,13 @@ def main(argv: list[str] | None = None) -> int:
     work_dir = output_dir / "work"
     work_dir.mkdir(exist_ok=True)
 
-    from dockmeow.core.receptor import prepare_receptor
-    from dockmeow.core.ligand import prepare_ligand_from_smiles, prepare_ligand_from_file
-    from dockmeow.core.pocket import detect_pockets
     from dockmeow.core.docking import DockingConfig, run_docking
-    from dockmeow.core.results import split_poses_to_sdf, export_poses_pdb
-    from dockmeow.core.report import ReportData, generate_pdf_report
     from dockmeow.core.exceptions import DockMeowError
+    from dockmeow.core.ligand import prepare_ligand_from_file, prepare_ligand_from_smiles
+    from dockmeow.core.pocket import detect_pockets
+    from dockmeow.core.receptor import prepare_receptor
+    from dockmeow.core.report import ReportData, generate_pdf_report
+    from dockmeow.core.results import export_poses_pdb, split_poses_to_sdf
 
     print(f"\n{'='*60}")
     print("  DockMeow / 一键对接 — Stage 1 CLI")

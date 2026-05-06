@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from dockmeow.core.receptor import prepare_receptor, HeteroGroup, _parse_hetero_groups
 from dockmeow.core.exceptions import ReceptorPreparationError
+from dockmeow.core.receptor import _parse_hetero_groups, prepare_receptor
 
 
 class TestParseHeteroGroups:
@@ -56,7 +54,7 @@ class TestPrepareReceptor:
 
     def test_pdbqt_has_atom_records(self, prepared_receptor):
         text = prepared_receptor.pdbqt_path.read_text()
-        atom_lines = [l for l in text.splitlines() if l.startswith("ATOM")]
+        atom_lines = [ln for ln in text.splitlines() if ln.startswith("ATOM")]
         assert len(atom_lines) > 10
 
     def test_chains_populated(self, prepared_receptor):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from dockmeow.core.results import split_poses_to_sdf, export_poses_pdb
+from dockmeow.core.results import export_poses_pdb, split_poses_to_sdf
 
 
 class TestSplitPosesToSdf:
@@ -44,9 +44,10 @@ class TestExportPosesPdb:
 # Provide docking_result fixture here too (re-use from test_docking via conftest injection)
 @pytest.fixture
 def docking_result(prepared_receptor, prepared_ligand, tmp_path):
+    import shutil
+
     from dockmeow.core.docking import DockingConfig, run_docking
     from dockmeow.core.pocket import detect_pockets
-    import shutil
 
     pocket = detect_pockets(prepared_receptor)[0]
     lig_copy = tmp_path / prepared_ligand.pdbqt_path.name

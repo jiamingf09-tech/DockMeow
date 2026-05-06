@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import base64
 import json
-import time
 from pathlib import Path
 
 from dockmeow.core.exceptions import LicenseError
@@ -50,6 +49,7 @@ class LicenseVerifier:
     def _load_public_key(self):
         """Reconstruct the RSA public key from its three stored fragments."""
         from cryptography.hazmat.primitives.serialization import load_pem_public_key
+
         from dockmeow.licensing._keystore import _kp1, _kp2, _kp3
 
         pem = _kp1 + _kp2 + _kp3
@@ -73,9 +73,9 @@ class LicenseVerifier:
         Raises:
             LicenseError: if signature is missing or invalid.
         """
+        from cryptography.exceptions import InvalidSignature
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import padding
-        from cryptography.exceptions import InvalidSignature
 
         sig_b64 = data.get("signature", "")
         if not sig_b64:

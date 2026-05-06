@@ -7,12 +7,10 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
-
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
-    QLabel,
     QMessageBox,
     QPushButton,
     QSplitter,
@@ -172,7 +170,9 @@ class ResultsPage(QWidget):
         if not src.exists():
             QMessageBox.warning(self, "导出 SDF", "SDF 文件不存在。")
             return
-        dest, _ = QFileDialog.getSaveFileName(self, t("results.export_sdf"), "poses.sdf", "SDF (*.sdf)")
+        dest, _ = QFileDialog.getSaveFileName(
+            self, t("results.export_sdf"), "poses.sdf", "SDF (*.sdf)"
+        )
         if dest:
             shutil.copy2(src, dest)
 

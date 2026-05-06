@@ -13,16 +13,13 @@ No PySide6 imports permitted in this module.
 from __future__ import annotations
 
 import logging
-import os
-import re
-import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from dockmeow.core.exceptions import PocketDetectionError
-from dockmeow.core.receptor import ReceptorInfo, HeteroGroup
+from dockmeow.core.receptor import HeteroGroup, ReceptorInfo
 
 _log = logging.getLogger(__name__)
 
@@ -49,7 +46,9 @@ class Pocket:
 # Co-crystal detection
 # ---------------------------------------------------------------------------
 
-def _cocrystal_center(pdb_path: Path, ligands: list[HeteroGroup]) -> tuple[float, float, float] | None:
+def _cocrystal_center(
+    pdb_path: Path, ligands: list[HeteroGroup]
+) -> tuple[float, float, float] | None:
     """Return the geometric centre of the first is_likely_ligand group."""
     target = next((h for h in ligands if h.is_likely_ligand), None)
     if target is None:

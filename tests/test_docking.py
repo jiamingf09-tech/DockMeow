@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from dockmeow.core.docking import DockingConfig, run_docking, DockingResult
+from dockmeow.core.docking import DockingConfig, DockingResult, run_docking
 from dockmeow.core.exceptions import DockingExecutionError
 
 
 @pytest.fixture(scope="module")
 def docking_result(tmp_path_factory, prepared_receptor, prepared_ligand):
     """Run one docking job (exhaustiveness=4 for speed); shared across module."""
-    from dockmeow.core.pocket import detect_pockets
     import shutil
+
+    from dockmeow.core.pocket import detect_pockets
 
     pockets = detect_pockets(prepared_receptor)
     pocket = pockets[0]

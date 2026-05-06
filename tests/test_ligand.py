@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from dockmeow.core.ligand import prepare_ligand_from_smiles, prepare_ligand_from_file, LigandInfo
 from dockmeow.core.exceptions import LigandPreparationError
+from dockmeow.core.ligand import LigandInfo, prepare_ligand_from_file, prepare_ligand_from_smiles
 
 
 class TestPrepareLigandFromSmiles:

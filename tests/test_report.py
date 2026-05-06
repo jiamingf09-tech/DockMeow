@@ -13,7 +13,7 @@ from dockmeow.core.report import ReportData, generate_pdf_report
 @pytest.fixture(scope="module")
 def report_data(prepared_receptor, prepared_ligand):
     """Minimal ReportData for testing; uses a mock DockingResult."""
-    from dockmeow.core.docking import DockingResult, DockingConfig
+    from dockmeow.core.docking import DockingConfig, DockingResult
     from dockmeow.core.pocket import detect_pockets
 
     pocket = detect_pockets(prepared_receptor)[0]
