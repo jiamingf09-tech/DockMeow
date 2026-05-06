@@ -27,16 +27,12 @@ jobs:
           python-version: "3.11"
 
       # ── macOS arm64: vina has no PyPI wheel; install from conda-forge ─────
-      # Mirrors the approach in release.yml: Miniforge3 + conda install vina,
-      # then copy vina + dist-info into the actions-python site-packages so
-      # pip sees vina as already satisfied.
+      # Keep subsequent steps on the Miniforge environment so pip sees the
+      # conda-installed vina package instead of trying to build the PyPI sdist.
       - name: Install vina via conda (macOS arm64)
         if: matrix.os == 'macos-14' && matrix.arch == 'arm64'
         shell: bash
         run: |
-          # Capture pip SP before conda changes $PATH / 'python'
-          PIP_SP="$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
-
           curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh \
             -o /tmp/miniforge.sh
           bash /tmp/miniforge.sh -b -p "${HOME}/miniforge3"
@@ -45,15 +41,10 @@ jobs:
           conda activate dockmeow
           conda install -y -c conda-forge vina boost-cpp
 
-          # Copy vina package + dist-info so 'pip install -e .' skips re-building it
-          CONDA_SP="${HOME}/miniforge3/envs/dockmeow/lib/python3.11/site-packages"
-          cp -r "${CONDA_SP}/vina" "${PIP_SP}/"
-          for d in "${CONDA_SP}"/vina-*.dist-info; do
-            [[ -d "$d" ]] && cp -r "$d" "${PIP_SP}/"
-          done
-          echo "Installed vina into ${PIP_SP}"
-
-          # Expose boost dylibs so vina can load them at test runtime
+          python -m pip install --upgrade pip
+          python -m pip show vina
+          echo "${HOME}/miniforge3/envs/dockmeow/bin" >> "${GITHUB_PATH}"
+          echo "CONDA_PREFIX=${HOME}/miniforge3/envs/dockmeow" >> "${GITHUB_ENV}"
           echo "DYLD_LIBRARY_PATH=${HOME}/miniforge3/envs/dockmeow/lib" >> "${GITHUB_ENV}"
 
       # ── Linux: PySide6 needs libEGL on headless runners ──────────────────
@@ -68,7 +59,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          pip install vina || python - << 'PYEOF'
+          python -m pip install vina || python - << 'PYEOF'
           import pathlib, site
           sp = pathlib.Path(site.getsitepackages()[0])
           di = sp / "vina-1.2.7.dist-info"
@@ -80,13 +71,13 @@ jobs:
           PYEOF
 
       - name: Install dev dependencies
-        run: pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev]"
 
       - name: Lint
-        run: ruff check src/ tests/
+        run: python -m ruff check src/ tests/
 
       - name: Run tests
-        run: pytest tests/ --tb=short --cov=dockmeow --cov-report=term-missing
+        run: python -m pytest tests/ --tb=short --cov=dockmeow --cov-report=term-missing
 
       # ── fpocket smoke test (Linux + macOS only; no Windows binary) ────────
       - name: fpocket smoke test

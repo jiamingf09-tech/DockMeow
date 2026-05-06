@@ -19,6 +19,7 @@ dependencies = [
     "gemmi>=0.6",            # runtime dep of pdbfixer>=1.9 (not declared by pdbfixer)
     "openmm>=8.1",
     "numpy>=1.26",
+    "scipy>=1.11",           # runtime dep of meeko receptor parsing
     "py3Dmol>=2.1",
     "biopython>=1.83",
     "cryptography>=42.0",

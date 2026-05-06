@@ -14,6 +14,7 @@ rdkit==2025.9.6
 pdbfixer==1.12.0
 OpenMM==8.5.1
 numpy==1.26.4
+scipy==1.17.1
 
 # Informatics / reporting
 py3Dmol==2.5.4
