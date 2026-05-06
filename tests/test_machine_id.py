@@ -188,9 +188,9 @@ class TestPlatformFactors:
                         return addr_file
 
                 mock_iface = MockIface()
-                mock_net.__iter__ = lambda self: iter([mock_iface])
+                mock_net.iterdir.return_value = [mock_iface]
                 result = _factor_mac()
-            assert result != ""
+            assert result == "021122334455"
 
     def test_mac_all_paths_fail_uses_uuid_node(self):
         # ifconfig returns output with no valid ether line → falls through to uuid.getnode
