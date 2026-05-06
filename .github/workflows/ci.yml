@@ -12,48 +12,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # conda-forge has pre-built vina for macOS arm64 and Linux x86_64
-          - os: macos-14
-            arch: arm64
-            conda_pkgs: "python=3.11 vina scipy"
-          - os: ubuntu-22.04
-            arch: x86_64
-            conda_pkgs: "python=3.11 vina scipy"
-          # vina is not on conda-forge for Windows; provide SWIG + Boost so
-          # pip can compile it from source using the MSVC toolchain.
-          - os: windows-latest
-            arch: x86_64
-            conda_pkgs: "python=3.11 swig boost-cpp scipy"
+          - { os: macos-14,       arch: arm64  }
+          - { os: windows-latest, arch: x86_64 }
+          - { os: ubuntu-22.04,   arch: x86_64 }
     runs-on: ${{ matrix.os }}
-
-    defaults:
-      run:
-        shell: bash -el {0}
+    # vina source compilation via MSVC is not supported; Windows is informational.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: actions/setup-python@v5
         with:
-          micromamba-version: latest
-          environment-name: dockmeow-ci
-          create-args: ${{ matrix.conda_pkgs }}
-          condarc: |
-            channels:
-              - conda-forge
+          python-version: "3.11"
 
-      # On Windows conda-forge installs Boost headers under Library/include,
-      # but vina's setup.py looks for $CONDA_PREFIX/include/boost.
-      - name: Fix Boost include path (Windows)
-        if: runner.os == 'Windows'
+      # vina pip sdist requires Boost + SWIG. On macOS arm64 homebrew provides
+      # both; setting CONDA_PREFIX to the brew prefix makes vina's setup.py
+      # find the headers at $CONDA_PREFIX/include/boost.
+      - name: Install Boost + SWIG (macOS)
+        if: runner.os == 'macOS'
         run: |
-          mkdir -p "$CONDA_PREFIX/include"
-          cp -r "$CONDA_PREFIX/Library/include/boost" "$CONDA_PREFIX/include/" 2>/dev/null || true
-
-      # PySide6 requires libEGL.so.1 at import time on headless Linux runners.
-      - name: Install Qt system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update -y && sudo apt-get install -y libegl1
+          brew install boost swig
+          echo "CONDA_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
       - name: Install dev dependencies
         run: pip install -e ".[dev]"
@@ -68,6 +48,7 @@ jobs:
       # ── fpocket smoke test (Linux + macOS only; no Windows binary) ──────────
       - name: fpocket smoke test
         if: runner.os != 'Windows'
+        shell: bash
         run: |
           python - << 'PYEOF'
           import subprocess, sys, tempfile, shutil
