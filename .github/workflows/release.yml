@@ -79,7 +79,7 @@ jobs:
       - name: Build with PyInstaller
         env:
           CONDA_LIB: ${{ env.CONDA_LIB }}
-        run: pyinstaller packaging/dockmeow.spec --clean --noconfirm
+        run: python -m PyInstaller packaging/dockmeow.spec --clean --noconfirm
 
       # ── Prepare output directory ──────────────────────────────────────────
       - name: Create dist/installers
