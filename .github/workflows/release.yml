@@ -12,13 +12,12 @@ permissions:
 jobs:
   build:
     strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: macos-14,       arch: arm64  }
-          - { os: macos-13,       arch: x86_64 }
-          - { os: windows-latest, arch: x86_64 }
-          - { os: ubuntu-22.04,   arch: x86_64 }
+        fail-fast: false
+        matrix:
+          include:
+            - { os: macos-14,       arch: arm64  }
+            - { os: windows-latest, arch: x86_64 }
+            - { os: ubuntu-22.04,   arch: x86_64 }
     runs-on: ${{ matrix.os }}
 
     steps:
