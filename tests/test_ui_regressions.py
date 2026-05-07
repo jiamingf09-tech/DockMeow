@@ -213,3 +213,30 @@ def test_viewer_box_rendering_uses_orange_fill_and_wireframe() -> None:
     assert "#888888" in _HTML
     assert "wireframe:false" in _HTML
     assert "wireframe:true,linewidth:lineWidth" in _HTML
+
+
+def test_activation_dialog_shows_same_machine_id_source(qapp, monkeypatch) -> None:
+    import dockmeow.ui.dialogs.activation_dialog as activation_dialog
+
+    monkeypatch.setattr(
+        activation_dialog, "get_machine_id", lambda: "DM-12345678-90ABCDEF-11223344"
+    )
+
+    dlg = activation_dialog.ActivationDialog()
+
+    assert dlg._machine_id_value.text() == "DM-12345678-90ABCDEF-11223344"
+    assert dlg._copy_machine_id_btn.isEnabled()
+
+
+def test_activation_dialog_copy_button_copies_machine_id(qapp, monkeypatch) -> None:
+    import dockmeow.ui.dialogs.activation_dialog as activation_dialog
+
+    machine_id = "DM-AAAABBBB-CCCCDDDD-EEEEFFFF"
+    monkeypatch.setattr(activation_dialog, "get_machine_id", lambda: machine_id)
+
+    dlg = activation_dialog.ActivationDialog()
+    qapp.clipboard().clear()
+
+    dlg._copy_machine_id_btn.click()
+
+    assert qapp.clipboard().text() == machine_id

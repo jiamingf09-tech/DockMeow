@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from dockmeow.core.exceptions import DockMeowError
+from dockmeow.licensing.machine import get_machine_id
 from dockmeow.licensing.verifier import LicenseVerifier, activate
 from dockmeow.ui.i18n import t
 from dockmeow.ui.widgets.drop_zone import DropZone
@@ -26,12 +28,33 @@ class ActivationDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.accepted_data: dict | None = None
+        self._machine_id = self._resolve_machine_id()
 
         self.setWindowTitle(t("activation.title"))
         self.setMinimumWidth(480)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
+
+        device_row = QHBoxLayout()
+        device_label = QLabel(t("activation.machine_id_label"))
+        self._machine_id_value = QLabel(self._machine_id)
+        self._machine_id_value.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self._machine_id_value.setStyleSheet(
+            "font-family: Menlo, monospace; color: #A6ADC8;"
+        )
+        self._copy_machine_id_btn = QPushButton(
+            t("activation.copy_machine_id_btn")
+        )
+        self._copy_machine_id_btn.clicked.connect(self._copy_machine_id)
+        if self._machine_id == t("activation.machine_id_unavailable"):
+            self._copy_machine_id_btn.setEnabled(False)
+        device_row.addWidget(device_label)
+        device_row.addWidget(self._machine_id_value, 1)
+        device_row.addWidget(self._copy_machine_id_btn)
+        layout.addLayout(device_row)
 
         self._drop = DropZone(
             t("activation.drop_hint"), ["dmlic"], self,
@@ -64,6 +87,15 @@ class ActivationDialog(QDialog):
         layout.addWidget(buttons)
 
     # ------------------------------------------------------------------
+    def _resolve_machine_id(self) -> str:
+        try:
+            return get_machine_id()
+        except Exception:  # noqa: BLE001
+            return t("activation.machine_id_unavailable")
+
+    def _copy_machine_id(self) -> None:
+        QApplication.clipboard().setText(self._machine_id)
+
     def _browse(self) -> None:
         # Reuse drop zone's file dialog click behaviour
         self._drop.mousePressEvent  # noqa: B018

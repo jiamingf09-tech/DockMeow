@@ -112,6 +112,9 @@ _STRINGS: dict[str, str] = {
 
     # --- Activation dialog ---
     "activation.title": "激活许可证",
+    "activation.machine_id_label": "设备 ID：",
+    "activation.copy_machine_id_btn": "复制 ID",
+    "activation.machine_id_unavailable": "读取失败",
     "activation.drop_hint": "拖入 .dmlic 许可证文件",
     "activation.browse_btn": "浏览…",
     "activation.success": "激活成功！",
