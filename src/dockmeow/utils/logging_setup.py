@@ -19,11 +19,6 @@ def setup_logging(log_dir: Path | None = None) -> None:
     Args:
         log_dir: Directory for log files. Defaults to ``user_workspace()/logs``.
     """
-    if log_dir is None:
-        from dockmeow.utils.paths import user_workspace
-        log_dir = user_workspace() / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
@@ -42,24 +37,39 @@ def setup_logging(log_dir: Path | None = None) -> None:
     console.setFormatter(fmt)
     root.addHandler(console)
 
+    if log_dir is None:
+        from dockmeow.utils.paths import user_workspace
+        log_dir = user_workspace() / "logs"
+
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return
+
     # Main rotating file: DEBUG+, keep 7 days of daily files
     main_log = log_dir / "dockmeow.log"
-    file_handler = logging.handlers.TimedRotatingFileHandler(
-        main_log, when="midnight", backupCount=7, encoding="utf-8"
-    )
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(fmt)
-    root.addHandler(file_handler)
+    try:
+        file_handler = logging.handlers.TimedRotatingFileHandler(
+            main_log, when="midnight", backupCount=7, encoding="utf-8"
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(fmt)
+        root.addHandler(file_handler)
+    except Exception:
+        return
 
     # Licensing-specific file: all licensing module logs go here too
     lic_log = log_dir / "licensing.log"
-    lic_handler = logging.handlers.TimedRotatingFileHandler(
-        lic_log, when="midnight", backupCount=7, encoding="utf-8"
-    )
-    lic_handler.setLevel(logging.DEBUG)
-    lic_handler.setFormatter(fmt)
-    lic_handler.addFilter(_PrefixFilter("dockmeow.licensing"))
-    root.addHandler(lic_handler)
+    try:
+        lic_handler = logging.handlers.TimedRotatingFileHandler(
+            lic_log, when="midnight", backupCount=7, encoding="utf-8"
+        )
+        lic_handler.setLevel(logging.DEBUG)
+        lic_handler.setFormatter(fmt)
+        lic_handler.addFilter(_PrefixFilter("dockmeow.licensing"))
+        root.addHandler(lic_handler)
+    except Exception:
+        return
 
 
 class _PrefixFilter(logging.Filter):

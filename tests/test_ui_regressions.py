@@ -202,8 +202,21 @@ def test_pocket_candidate_column_has_room_to_read(qapp, monkeypatch) -> None:
     assert left_panel.sizePolicy().horizontalStretch() == 2
     assert viewer_panel.sizePolicy().horizontalStretch() == 3
     assert page._scroll.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    assert viewer_panel is page._viewer
+    assert viewer_panel is page._viewer_host
+    assert page._viewer is not None
     assert page._cards[0].sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+
+
+def test_main_window_does_not_create_webengine_viewers_on_startup(qapp, monkeypatch) -> None:
+    _patch_viewers(monkeypatch)
+
+    from dockmeow.ui.main_window import MainWindow
+
+    win = MainWindow(None)
+
+    assert win._receptor_page._viewer is None
+    assert win._pocket_page._viewer is None
+    assert win._results_page._viewer is None
 
 
 def test_viewer_box_rendering_uses_orange_fill_and_wireframe() -> None:

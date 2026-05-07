@@ -34,6 +34,7 @@ class ReceptorPage(QWidget):
         self._worker: PrepareReceptorWorker | None = None
         self._pdb_path: Path | None = None
         self._receptor_info = None
+        self._viewer: Viewer3D | None = None
 
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -75,12 +76,25 @@ class ReceptorPage(QWidget):
         splitter.addWidget(left)
 
         # ---- right panel
-        self._viewer = Viewer3D()
-        splitter.addWidget(self._viewer)
+        self._viewer_host = QWidget()
+        self._viewer_layout = QVBoxLayout(self._viewer_host)
+        self._viewer_layout.setContentsMargins(0, 0, 0, 0)
+        self._viewer_placeholder = QLabel("3D 预览将在载入受体后初始化。")
+        self._viewer_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._viewer_placeholder.setWordWrap(True)
+        self._viewer_layout.addWidget(self._viewer_placeholder)
+        splitter.addWidget(self._viewer_host)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 2)
 
     # ------------------------------------------------------------------
+    def _ensure_viewer(self) -> Viewer3D:
+        if self._viewer is None:
+            self._viewer = Viewer3D()
+            self._viewer_placeholder.hide()
+            self._viewer_layout.addWidget(self._viewer)
+        return self._viewer
+
     def _on_file(self, path: Path) -> None:
         self._pdb_path = path
         self._hetero_list.clear()
@@ -141,7 +155,7 @@ class ReceptorPage(QWidget):
             self._warnings.addItem(w)
 
         prepared_pdb = Path(info.pdb_path)
-        self._viewer.load_receptor(prepared_pdb)
+        self._ensure_viewer().load_receptor(prepared_pdb)
 
         self.receptor_ready.emit(info, prepared_pdb)
 

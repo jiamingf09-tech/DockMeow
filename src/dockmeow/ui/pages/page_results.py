@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QMessageBox,
     QPushButton,
     QSplitter,
@@ -37,6 +38,7 @@ class ResultsPage(QWidget):
         self._pdb_path: Path | None = None
         self._poses_sdf_blocks: list[str] = []
         self._auto_screenshot: Path | None = None  # pre-captured for PDF export
+        self._viewer: Viewer3D | None = None
 
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -45,8 +47,14 @@ class ResultsPage(QWidget):
         root.addWidget(splitter)
 
         # ---- left: viewer
-        self._viewer = Viewer3D()
-        splitter.addWidget(self._viewer)
+        self._viewer_host = QWidget()
+        self._viewer_layout = QVBoxLayout(self._viewer_host)
+        self._viewer_layout.setContentsMargins(0, 0, 0, 0)
+        self._viewer_placeholder = QLabel("3D 预览将在有对接结果后初始化。")
+        self._viewer_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._viewer_placeholder.setWordWrap(True)
+        self._viewer_layout.addWidget(self._viewer_placeholder)
+        splitter.addWidget(self._viewer_host)
 
         # ---- right: table + buttons
         right = QWidget()
@@ -83,12 +91,19 @@ class ResultsPage(QWidget):
         splitter.setStretchFactor(1, 1)
 
     # ------------------------------------------------------------------
+    def _ensure_viewer(self) -> Viewer3D:
+        if self._viewer is None:
+            self._viewer = Viewer3D()
+            self._viewer_placeholder.hide()
+            self._viewer_layout.addWidget(self._viewer)
+        return self._viewer
+
     def set_context(self, receptor_info, ligand_info, pdb_path: Path) -> None:
         self._receptor_info = receptor_info
         self._ligand_info = ligand_info
         self._pdb_path = Path(pdb_path) if pdb_path else None
         if self._pdb_path:
-            self._viewer.load_receptor(self._pdb_path)
+            self._ensure_viewer().load_receptor(self._pdb_path)
 
     def set_result(self, result) -> None:
         self._result = result
@@ -128,10 +143,10 @@ class ResultsPage(QWidget):
             def _do_capture() -> None:
                 # loadBestPose render() fired; wait one RAF frame (≈16 ms) then grab.
                 QTimer.singleShot(
-                    50, lambda: self._viewer.capture_png(_shot_path, callback=_auto_save)
+                    50, lambda: self._ensure_viewer().capture_png(_shot_path, callback=_auto_save)
                 )
 
-            self._viewer.load_best_pose_for_export(
+            self._ensure_viewer().load_best_pose_for_export(
                 self._pdb_path,
                 self._poses_sdf_blocks[0],
                 on_ready=_do_capture,
@@ -159,8 +174,8 @@ class ResultsPage(QWidget):
         idx = rows[0].row()
         if 0 <= idx < len(self._poses_sdf_blocks):
             if self._pdb_path:
-                self._viewer.load_receptor(self._pdb_path)
-            self._viewer.load_ligand_pose(self._poses_sdf_blocks[idx])
+                self._ensure_viewer().load_receptor(self._pdb_path)
+            self._ensure_viewer().load_ligand_pose(self._poses_sdf_blocks[idx])
 
     # --- exports -------------------------------------------------------
     def _export_sdf(self) -> None:
@@ -225,12 +240,12 @@ class ResultsPage(QWidget):
         if self._pdb_path and self._poses_sdf_blocks:
             def _do_capture_slow() -> None:
                 QTimer.singleShot(
-                    50, lambda: self._viewer.capture_png(tmp_png, callback=_on_grab)
+                    50, lambda: self._ensure_viewer().capture_png(tmp_png, callback=_on_grab)
                 )
-            self._viewer.load_best_pose_for_export(
+            self._ensure_viewer().load_best_pose_for_export(
                 self._pdb_path,
                 self._poses_sdf_blocks[0],
                 on_ready=_do_capture_slow,
             )
         else:
-            self._viewer.capture_png(tmp_png, callback=_on_grab)
+            self._ensure_viewer().capture_png(tmp_png, callback=_on_grab)

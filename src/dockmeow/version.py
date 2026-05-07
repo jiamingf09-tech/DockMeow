@@ -1,5 +1,5 @@
 """Single source of truth for the package version."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __build_commit__ = "unknown"
 __build_time__ = "2026-05-03T01:54:45Z"

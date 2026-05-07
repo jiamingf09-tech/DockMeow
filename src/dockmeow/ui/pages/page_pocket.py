@@ -45,6 +45,7 @@ class PocketPage(QWidget):
         self._pockets: list[Pocket] = []
         self._selected_pocket: Pocket | None = None
         self._last_receptor_key: tuple[Path, Path] | None = None
+        self._viewer: Viewer3D | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 12, 12, 12)
@@ -111,14 +112,27 @@ class PocketPage(QWidget):
         splitter.addWidget(left)
 
         # ---- right: 3D viewer
-        self._viewer = Viewer3D()
-        splitter.addWidget(self._viewer)
+        self._viewer_host = QWidget()
+        self._viewer_layout = QVBoxLayout(self._viewer_host)
+        self._viewer_layout.setContentsMargins(0, 0, 0, 0)
+        self._viewer_placeholder = QLabel("3D 预览将在载入受体后初始化。")
+        self._viewer_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._viewer_placeholder.setWordWrap(True)
+        self._viewer_layout.addWidget(self._viewer_placeholder)
+        splitter.addWidget(self._viewer_host)
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 3)
         splitter.setSizes([420, 630])
         self._splitter = splitter
 
     # ------------------------------------------------------------------
+    def _ensure_viewer(self) -> Viewer3D:
+        if self._viewer is None:
+            self._viewer = Viewer3D()
+            self._viewer_placeholder.hide()
+            self._viewer_layout.addWidget(self._viewer)
+        return self._viewer
+
     def set_receptor(self, receptor_info, pdb_path: Path) -> None:
         """Called by MainWindow when receptor is ready."""
         new_path = Path(pdb_path)
@@ -129,7 +143,7 @@ class PocketPage(QWidget):
         self._pdb_path = new_path
         self._last_receptor_key = new_key
         if self._pdb_path:
-            self._viewer.load_receptor(self._pdb_path)
+            self._ensure_viewer().load_receptor(self._pdb_path)
         self._start_detection()
 
     def _start_detection(self) -> None:
@@ -186,11 +200,11 @@ class PocketPage(QWidget):
 
         if self._pdb_path is not None:
             pockets = self._pockets if self._pockets and pocket in self._pockets else [pocket]
-            self._viewer.load_receptor_with_pockets(self._pdb_path, pockets, pocket)
+            self._ensure_viewer().load_receptor_with_pockets(self._pdb_path, pockets, pocket)
         elif self._pockets and pocket in self._pockets:
-            self._viewer.show_pockets(self._pockets, pocket)
+            self._ensure_viewer().show_pockets(self._pockets, pocket)
         else:
-            self._viewer.show_box(pocket)
+            self._ensure_viewer().show_box(pocket)
 
     def get_selected_pocket(self) -> Pocket | None:
         """Return the pocket selected by the user or default highlight."""
@@ -221,7 +235,7 @@ class PocketPage(QWidget):
             self._selected_pocket = custom_pocket
             for c in self._cards:
                 c.set_selected(False)
-            self._viewer.show_box(custom_pocket)
+            self._ensure_viewer().show_box(custom_pocket)
             self._status.setText(
                 "已使用自定义盒子："
                 f"中心 ({center[0]:.2f}, {center[1]:.2f}, {center[2]:.2f})；"

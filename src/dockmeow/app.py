@@ -9,6 +9,7 @@ import traceback as _traceback
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
+from dockmeow.utils.logging_setup import setup_logging
 from dockmeow.utils.paths import resource_path
 
 
@@ -139,20 +140,28 @@ def _check_license() -> dict | None:
 
 def run() -> int:
     """Full application lifecycle: create → license-check → main window → exec."""
+    setup_logging()
     _install_excepthook()
+    _log = _logging.getLogger("dockmeow")
+    _log.info("DockMeow startup: begin")
 
     # QApplication must exist before importing QtWebEngineWidgets.
     app = create_app()
+    _log.info("DockMeow startup: QApplication ready")
 
     # Pre-import all PySide6 sub-modules and scientific C-extensions in the
     # main thread so worker QThreads never trigger dlopen (macOS dyld crash).
     _force_pyside_eager_import()
+    _log.info("DockMeow startup: PySide eager import finished")
     _warm_up_scientific_imports()
+    _log.info("DockMeow startup: scientific eager import finished")
 
     license_data = _check_license()
+    _log.info("DockMeow startup: license check finished")
 
     from dockmeow.ui.main_window import MainWindow
 
     window = MainWindow(license_data)
     window.show()
+    _log.info("DockMeow startup: main window shown")
     return app.exec()
