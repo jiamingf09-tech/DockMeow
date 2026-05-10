@@ -11,7 +11,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "DockMeow Team" }]
 
 dependencies = [
-    "PySide6>=6.6,<6.8",
+    "PySide6>=6.11,<6.12",
     "vina>=1.2.5",          # conda-forge only; pip sdist requires Boost C++ headers
     "meeko>=0.7,<0.8",      # 0.7 changed receptor prep to Polymer API and write_string to 3-tuple
     "rdkit>=2024.3.1",

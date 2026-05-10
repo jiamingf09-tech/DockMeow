@@ -19,7 +19,8 @@ import logging
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from dockmeow.utils.paths import resource_path
@@ -102,14 +103,71 @@ def _build_html() -> str:
         "function clearAll() {"
         "  _v.removeAllModels(); _v.removeAllShapes(); _v.render();"
         "}"
-        # Load receptor + best pose together, zoom to ligand for PDF export
+        # Load receptor + best pose.
+        # Strategy:
+        #   • Protein rendered semi-transparent (opacity:0.5) so the ligand
+        #     is always visible through the ribbon even when occluded.
+        #   • Ligand rendered ball-and-stick at generous radii so it is clearly
+        #     visible at whole-protein zoom level.
+        #   • Rotation quaternion is computed so the receptor→ligand vector
+        #     points toward the camera (+Z), further reducing occlusion.
+        #   • Proper edge-case handling for dz≈±1 and degenerate geometries.
         "function loadBestPose(pdbText, sdfText) {"
         "  _v.removeAllModels(); _v.removeAllShapes();"
         "  _v.addModel(pdbText, 'pdb');"
-        "  _v.setStyle({model:0}, {cartoon:{color:'spectrum',opacity:0.85}});"
+        # Semi-transparent protein so the ligand shows through the ribbon
+        "  _v.setStyle({model:0}, {cartoon:{color:'spectrum',opacity:0.5}});"
         "  _v.addModel(sdfText, 'sdf');"
-        "  _v.setStyle({model:1}, {stick:{colorscheme:'greenCarbon',radius:0.25}});"
-        "  _v.zoomTo({model:1}); _v.zoom(1.2); _v.render();"
+        # Ball-and-stick at generous radii — visible at whole-protein scale
+        "  _v.setStyle({model:1}, {"
+        "    stick:{colorscheme:'greenCarbon',radius:0.4},"
+        "    sphere:{colorscheme:'greenCarbon',radius:0.5}"
+        "  });"
+        "  var la=_v.selectedAtoms({model:1}), ra=_v.selectedAtoms({model:0});"
+        # Bail out gracefully if no ligand atoms parsed (malformed SDF)
+        "  if(la.length===0){_v.zoomTo();_v.render();return;}"
+        # Compute ligand centroid
+        "  var lx=0,ly=0,lz=0;"
+        "  la.forEach(function(a){lx+=a.x;ly+=a.y;lz+=a.z;});"
+        "  lx/=la.length;ly/=la.length;lz/=la.length;"
+        # Compute receptor centroid (guard against empty receptor)
+        "  var rx=0,ry=0,rz=0;"
+        "  if(ra.length>0){"
+        "    ra.forEach(function(a){rx+=a.x;ry+=a.y;rz+=a.z;});"
+        "    rx/=ra.length;ry/=ra.length;rz/=ra.length;"
+        "  }"
+        # Unit vector receptor→ligand
+        "  var dx=lx-rx,dy=ly-ry,dz=lz-rz;"
+        "  var d=Math.sqrt(dx*dx+dy*dy+dz*dz);"
+        # If ligand is at protein centroid (degenerate), just show whole complex
+        "  if(d<0.5){_v.zoomTo();_v.render();return;}"
+        "  dx/=d;dy/=d;dz/=d;"
+        # Quaternion to rotate (dx,dy,dz) → (0,0,1) [camera direction]:
+        #   axis = (dx,dy,dz) × (0,0,1) = (dy,-dx,0); angle = arccos(dz)
+        # Edge cases handled explicitly to avoid divide-by-zero on axl:
+        #   dz≈+1: ligand already faces camera → identity quaternion
+        #   dz≈-1: ligand faces away       → 180° around Y axis
+        "  var axl=Math.sqrt(dx*dx+dy*dy);"
+        "  var qx=0,qy=0,qz=0,qw=1;"
+        "  if(dz>0.99){"
+        "    qx=0;qy=0;qz=0;qw=1;"           # identity — already correct
+        "  }else if(dz<-0.99){"
+        "    qx=0;qy=1;qz=0;qw=0;"           # 180° flip around Y
+        "  }else{"
+        "    var ang=Math.acos(dz);"
+        "    var s=Math.sin(ang/2);"
+        "    qx=(dy/axl)*s;qy=(-dx/axl)*s;qz=0;qw=Math.cos(ang/2);"
+        "  }"
+        # Apply rotation FIRST, then zoomTo() so it recomputes zoom/translation
+        # for the new orientation — otherwise zoomTo() fits the *old* rotation
+        # and the complex may not fill the viewport correctly after the rotation.
+        # zoomTo() only touches translation+zoom; it never changes the quaternion.
+        "  var v=_v.getView();v[3]=qx;v[4]=qy;v[5]=qz;v[6]=qw;"
+        "  _v.setView(v);"
+        "  _v.zoomTo();_v.render();"
+        "}"
+        "function setViewerBg(hexColor) {"
+        "  _v.setBackgroundColor(hexColor); _v.render();"
         "}"
         # Screenshot: render → wait for GPU frame → return pngURI
         "function requestScreenshot() {"
@@ -131,14 +189,50 @@ _HTML = _build_html()
 class Viewer3D(QWebEngineView):
     """Renders receptor + ligand poses using py3Dmol (offline, bundled JS)."""
 
+    #: Default background color (dark, matching app theme)
+    DEFAULT_BG = "#1E1E2E"
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._ready = False
         self._pending: list[str] = []
         self._pending_callbacks: list[Callable[[], None]] = []
+        self._bg_color: str = self.DEFAULT_BG
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setAccessibleName("DockMeow 3D preview")
+        self.setAccessibleDescription("Molecular preview rendered by Qt WebEngine")
         self.loadFinished.connect(self._on_load_finished)
         # Use a data URL base so that local resource requests are allowed
         self.setHtml(_HTML, QUrl("qrc:/"))
+
+    # ------------------------------------------------------------------
+    def suspend_for_page_hide(self) -> None:
+        """Temporarily remove the native WebEngine view from active page UI."""
+        self.clearFocus()
+        self.setEnabled(False)
+        self.hide()
+        try:
+            self.page().setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def resume_after_page_show(self) -> None:
+        """Restore the WebEngine view after its page becomes visible again."""
+        try:
+            self.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
+        except Exception:  # noqa: BLE001
+            pass
+        self.setEnabled(True)
+        self.show()
+
+    def set_background_color(self, hex_color: str) -> None:
+        """Change the viewer canvas background color (e.g. '#FFFFFF').
+
+        The color is persisted so ``capture_png`` captures with the chosen
+        background.  Pass ``Viewer3D.DEFAULT_BG`` to restore the dark default.
+        """
+        self._bg_color = hex_color
+        self._run_js(f"setViewerBg('{hex_color}');")
 
     # ------------------------------------------------------------------
     def _on_load_finished(self, ok: bool) -> None:
@@ -170,6 +264,21 @@ class Viewer3D(QWebEngineView):
 
     def load_ligand_pose(self, sdf_content: str) -> None:
         self._run_js(f"loadLigand({json.dumps(sdf_content)});")
+
+    def load_result_pose(self, pdb_path: Path, sdf_content: str) -> None:
+        """Load receptor + ligand for the results page using ``loadBestPose``.
+
+        This applies the ligand-facing rotation so the ligand is in the
+        foreground, then zooms to fit the entire complex.  Use this instead
+        of the separate ``load_receptor`` + ``load_ligand_pose`` pair on the
+        results page so the view is always correct when poses are switched.
+        """
+        try:
+            pdb_text = Path(pdb_path).read_text(encoding="utf-8", errors="replace")
+        except Exception as exc:
+            _log.warning("Viewer3D.load_result_pose: cannot read %s: %s", pdb_path, exc)
+            return
+        self._run_js(f"loadBestPose({json.dumps(pdb_text)}, {json.dumps(sdf_content)});")
 
     def show_box(
         self,

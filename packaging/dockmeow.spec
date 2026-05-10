@@ -267,11 +267,11 @@ if IS_MACOS:
             "CFBundleName": "DockMeow",
             "CFBundleDisplayName": "一键对接",
             "CFBundleIdentifier": "com.dockmeow.app",
-            "CFBundleVersion": "0.1.0",
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleVersion": "0.1.1",
+            "CFBundleShortVersionString": "0.1.1",
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,   # allow dark mode
-            "LSMinimumSystemVersion": "12.0",
+            "LSMinimumSystemVersion": "13.0",
             "NSHumanReadableCopyright": "© 2026 DockMeow",
             # Qt WebEngine entitlements (unsigned dev build)
             "com.apple.security.cs.allow-jit": True,

@@ -34,9 +34,23 @@ class FakeViewer(QWidget):
         self.loaded_receptors: list[Path] = []
         self.boxes: list[object] = []
         self.pocket_groups: list[tuple[list[object], object | None]] = []
+        self.suspend_count = 0
+        self.resume_count = 0
+        self.delete_later_count = 0
 
     def load_receptor(self, pdb_path: Path) -> None:
         self.loaded_receptors.append(Path(pdb_path))
+
+    def suspend_for_page_hide(self) -> None:
+        self.suspend_count += 1
+        self.hide()
+
+    def resume_after_page_show(self) -> None:
+        self.resume_count += 1
+        self.show()
+
+    def deleteLater(self) -> None:  # noqa: N802
+        self.delete_later_count += 1
 
     def show_box(self, pocket_or_center, size=None) -> None:
         self.boxes.append(pocket_or_center if size is None else (pocket_or_center, size))
@@ -121,6 +135,67 @@ def test_ligand_ready_does_not_auto_navigate(qapp, tmp_path, monkeypatch) -> Non
 
     win._on_next_clicked()
     assert win._stack.currentIndex() == 2
+
+
+def test_step_change_suspends_3d_viewer_before_hiding_page(qapp, tmp_path, monkeypatch) -> None:
+    _patch_viewers(monkeypatch)
+
+    from dockmeow.ui.main_window import MainWindow
+
+    clean_pdb = tmp_path / "1SVC_clean.pdb"
+    clean_pdb.write_text("clean", encoding="utf-8")
+    win = MainWindow(None)
+    info = SimpleNamespace(
+        pdb_path=clean_pdb,
+        pdbqt_path=tmp_path / "r.pdbqt",
+        hetero_groups=[],
+        warnings=[],
+        nucleic_acid_chains=[],
+    )
+
+    win._receptor_page._on_done(info)
+    viewer = win._receptor_page._viewer
+    assert viewer is not None
+    assert viewer.suspend_count == 0
+
+    win._on_next_clicked()
+
+    assert win._stack.currentIndex() == 1
+    assert win._receptor_page._viewer is None
+    assert viewer.suspend_count == 1
+    assert viewer.delete_later_count == 1
+
+    win._go_to_page(0)
+
+    new_viewer = win._receptor_page._viewer
+    assert new_viewer is not None
+    assert new_viewer is not viewer
+    assert new_viewer.loaded_receptors == [clean_pdb]
+
+
+def test_pocket_detection_not_restarted_for_same_receptor(qapp, tmp_path, monkeypatch) -> None:
+    _patch_viewers(monkeypatch)
+
+    from dockmeow.ui.pages.page_pocket import PocketPage
+
+    page = PocketPage()
+    prepared_pdb = tmp_path / "prepared.pdb"
+    clean_pdb = tmp_path / "clean.pdb"
+    prepared_pdb.write_text("prepared", encoding="utf-8")
+    clean_pdb.write_text("clean", encoding="utf-8")
+    info = SimpleNamespace(pdb_path=prepared_pdb)
+    starts: list[Path] = []
+
+    def fake_start_detection() -> None:
+        starts.append(page._pdb_path)
+        page._worker = SimpleNamespace(isRunning=lambda: True)
+
+    monkeypatch.setattr(page, "_start_detection", fake_start_detection)
+
+    page.set_receptor(info, clean_pdb)
+    page.set_receptor(info, clean_pdb)
+
+    assert starts == [clean_pdb]
 
 
 def test_pocket_selection_highlights_without_signal(qapp, monkeypatch) -> None:
@@ -226,6 +301,26 @@ def test_viewer_box_rendering_uses_orange_fill_and_wireframe() -> None:
     assert "#888888" in _HTML
     assert "wireframe:false" in _HTML
     assert "wireframe:true,linewidth:lineWidth" in _HTML
+
+
+def test_webengine_flags_disable_renderer_accessibility(monkeypatch) -> None:
+    from dockmeow import app as dockmeow_app
+
+    monkeypatch.setenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
+
+    dockmeow_app._configure_webengine_flags()
+    dockmeow_app._configure_webengine_flags()
+
+    flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"].split()
+    assert "--disable-gpu" in flags
+    assert flags.count("--disable-renderer-accessibility") == 1
+
+
+def test_pyside_version_avoids_qtwebengine_accessibility_crash() -> None:
+    import PySide6
+
+    version = tuple(int(part) for part in PySide6.__version__.split(".")[:2])
+    assert version >= (6, 11)
 
 
 def test_activation_dialog_shows_same_machine_id_source(qapp, monkeypatch) -> None:

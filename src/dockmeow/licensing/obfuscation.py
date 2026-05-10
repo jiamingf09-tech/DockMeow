@@ -24,8 +24,8 @@ _XOR_KEY = 0x4D  # 'M'
 # Populated by tools/inject_build_info.py before packaging.
 # Empty strings = integrity check disabled (development mode).
 _EXPECTED_HASHES: dict[str, str] = {
-    "verifier": "a6fadf8ec780cdfe3f80c0adb7a0a15434a8bacd18963ab6b7d12d21f420c991",
-    "_keystore": "8a14ecca31739cd850bd3c1481938cf4dbbcc55d78826ece8ed2052a06624050",
+    "verifier": "9fe3587ea8b0d58c3fb2d937ca4d0f1892291ae410ce88b6debec613a3d7f1dc",
+    "_keystore": "fac015eff887b163392c6f34d82553f503777f48720146a616af641520c8d32d",
 }
 
 

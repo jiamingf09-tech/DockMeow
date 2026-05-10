@@ -1,8 +1,14 @@
 ; Inno Setup script for DockMeow Windows installer.
-; Produces: DockMeow-Setup-0.1.0-x64.exe in dist\installers\
+; Produces: DockMeow-Setup-<version>-x64.exe in dist\installers\
+;
+; Build via build_win.ps1 (version is passed as /DMyAppVersion=x.y.z).
+; Manual build: iscc /DMyAppVersion=0.1.1 packaging\windows\installer.iss
 
 #define MyAppName "DockMeow"
-#define MyAppVersion "0.1.0"
+; Allow version override from command line: iscc /DMyAppVersion=0.2.0 ...
+#ifndef MyAppVersion
+  #define MyAppVersion "0.1.1"
+#endif
 #define MyAppPublisher "DockMeow Team"
 #define MyAppExeName "DockMeow.exe"
 

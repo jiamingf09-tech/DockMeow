@@ -308,7 +308,19 @@ def generate_pdf_report(
         for i, img_path in enumerate(valid_screens, start=1):
             try:
                 available_w = W - 2 * margin
-                img = Image(str(img_path), width=available_w, height=available_w * 0.6)
+                # Preserve the PNG's actual aspect ratio to avoid stretching.
+                # Clamp height to ~60% of the available page height so the image
+                # never spills onto the next page.
+                try:
+                    from PIL import Image as _PILImage
+                    with _PILImage.open(str(img_path)) as _pil:
+                        _pw, _ph = _pil.size
+                    _aspect = _ph / _pw if _pw else 0.5625
+                except Exception:
+                    _aspect = 0.5625  # 16:9 fallback
+                max_h = (H - 2 * margin) * 0.6
+                img_h = min(available_w * _aspect, max_h)
+                img = Image(str(img_path), width=available_w, height=img_h)
                 story.append(img)
                 story.append(Paragraph(f"图 {i}：构象 {i} 3D 视图", small_style))
                 story.append(Spacer(1, 0.5 * cm))

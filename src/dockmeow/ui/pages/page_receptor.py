@@ -95,6 +95,24 @@ class ReceptorPage(QWidget):
             self._viewer_layout.addWidget(self._viewer)
         return self._viewer
 
+    def _destroy_viewer(self) -> None:
+        if self._viewer is None:
+            return
+        viewer = self._viewer
+        self._viewer = None
+        viewer.suspend_for_page_hide()
+        self._viewer_layout.removeWidget(viewer)
+        viewer.setParent(None)
+        viewer.deleteLater()
+        self._viewer_placeholder.show()
+
+    def on_page_leave(self) -> None:
+        self._destroy_viewer()
+
+    def on_page_enter(self) -> None:
+        if self._receptor_info is not None:
+            self._ensure_viewer().load_receptor(Path(self._receptor_info.pdb_path))
+
     def _on_file(self, path: Path) -> None:
         self._pdb_path = path
         self._hetero_list.clear()

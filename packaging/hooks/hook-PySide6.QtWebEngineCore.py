@@ -2,12 +2,11 @@
 # PyInstaller's built-in PySide6 hooks handle the main binaries;
 # this hook adds the data files that the WebEngine process needs at runtime.
 
+from pathlib import Path
+
 from PyInstaller.utils.hooks import get_package_paths
 
 _, pkg_path = get_package_paths("PySide6")
-
-from pathlib import Path
-import os
 
 _pkg = Path(pkg_path)
 

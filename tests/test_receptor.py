@@ -79,3 +79,49 @@ class TestPrepareReceptor:
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(ReceptorPreparationError):
             prepare_receptor(tmp_path / "nonexistent.pdb", tmp_path / "work")
+
+    def test_empty_pdbqt_retry_progress_is_monotonic(self, tmp_path, monkeypatch):
+        """Compatibility retry must not make the GUI progress bar jump backward."""
+        from dockmeow.core import receptor as receptor_mod
+
+        pdb = tmp_path / "mini.pdb"
+        fixed_atom = (
+            "ATOM      1  N   ALA A   1      11.104  13.207  14.099  1.00 20.00           N\n"
+            "END\n"
+        )
+        pdb.write_text(fixed_atom, encoding="utf-8")
+
+        def fake_run_pdbfixer(input_pdb, output_pdb, add_missing_atoms, ph, cb):
+            if cb:
+                cb("受体准备", 10, "PDBFixer")
+                cb("受体准备", 40, "PDBFixer done")
+            output_pdb.write_text(fixed_atom, encoding="utf-8")
+            return []
+
+        calls = {"pdbqt": 0}
+
+        def fake_pdb_to_pdbqt(input_pdb, output_pdbqt, cb, original_pdb=None):
+            calls["pdbqt"] += 1
+            if cb:
+                cb("受体准备", 70, "meeko")
+                cb("受体准备", 90, "meeko done")
+            output_pdbqt.write_text(
+                "" if calls["pdbqt"] == 1 else "RECEPTOR\n",
+                encoding="utf-8",
+            )
+            return []
+
+        monkeypatch.setattr(receptor_mod, "_run_pdbfixer", fake_run_pdbfixer)
+        monkeypatch.setattr(receptor_mod, "_pdb_to_pdbqt", fake_pdb_to_pdbqt)
+
+        progress: list[int] = []
+        info = receptor_mod.prepare_receptor(
+            pdb,
+            tmp_path / "work",
+            progress_callback=lambda _stage, pct, _msg: progress.append(int(pct)),
+        )
+
+        assert info.pdbqt_path.read_text(encoding="utf-8") == "RECEPTOR\n"
+        assert calls["pdbqt"] == 2
+        assert progress == sorted(progress)
+        assert progress[-1] == 100

@@ -133,11 +133,34 @@ class PocketPage(QWidget):
             self._viewer_layout.addWidget(self._viewer)
         return self._viewer
 
+    def _destroy_viewer(self) -> None:
+        if self._viewer is None:
+            return
+        viewer = self._viewer
+        self._viewer = None
+        viewer.suspend_for_page_hide()
+        self._viewer_layout.removeWidget(viewer)
+        viewer.setParent(None)
+        viewer.deleteLater()
+        self._viewer_placeholder.show()
+
+    def on_page_leave(self) -> None:
+        self._destroy_viewer()
+
+    def on_page_enter(self) -> None:
+        if self._selected_pocket is not None:
+            self._highlight_pocket(self._selected_pocket)
+        elif self._pdb_path is not None:
+            self._ensure_viewer().load_receptor(self._pdb_path)
+
     def set_receptor(self, receptor_info, pdb_path: Path) -> None:
         """Called by MainWindow when receptor is ready."""
         new_path = Path(pdb_path)
         new_key = (Path(getattr(receptor_info, "pdb_path")), new_path)
-        if self._last_receptor_key == new_key and (self._cards or self._selected_pocket):
+        worker_running = self._worker is not None and self._worker.isRunning()
+        if self._last_receptor_key == new_key and (
+            worker_running or self._cards or self._selected_pocket
+        ):
             return
         self._receptor_info = receptor_info
         self._pdb_path = new_path

@@ -56,10 +56,14 @@ _STRINGS: dict[str, str] = {
     "results.pose": "构象",
     "results.rmsd_lb": "RMSD lb",
     "results.rmsd_ub": "RMSD ub",
-    "results.export_sdf": "导出 SDF",
-    "results.export_pdb": "导出 PDB",
+    "results.export_sdf": "导出 SDF 格式",
+    "results.export_pdb": "导出 PDBQT 格式",
     "results.export_pdf": "生成 PDF 报告",
     "results.new_docking": "开始新对接",
+    "results.ray_btn": "Ray 截图",
+    "results.ray_bg_btn": "背景色",
+    "results.ray_saved": "截图已保存：{path}",
+    "results.ray_failed": "截图失败：{err}",
 
     # --- Status bar ---
     "status.activated": "已激活：{email}",

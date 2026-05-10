@@ -7,7 +7,9 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QColorDialog,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -30,6 +32,9 @@ class ResultsPage(QWidget):
 
     new_docking_requested = Signal()
 
+    # ---- default viewer background color (matches viewer_3d.py HTML)
+    _DEFAULT_BG = "#1E1E2E"
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._receptor_info = None
@@ -39,6 +44,7 @@ class ResultsPage(QWidget):
         self._poses_sdf_blocks: list[str] = []
         self._auto_screenshot: Path | None = None  # pre-captured for PDF export
         self._viewer: Viewer3D | None = None
+        self._ray_bg_color: str = self._DEFAULT_BG  # current Ray background color
 
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
@@ -46,14 +52,34 @@ class ResultsPage(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         root.addWidget(splitter)
 
-        # ---- left: viewer
+        # ---- left: viewer + Ray toolbar
         self._viewer_host = QWidget()
         self._viewer_layout = QVBoxLayout(self._viewer_host)
         self._viewer_layout.setContentsMargins(0, 0, 0, 0)
+        self._viewer_layout.setSpacing(4)
+
+        # Ray toolbar (above the viewer placeholder / viewer widget)
+        ray_bar = QHBoxLayout()
+        ray_bar.setContentsMargins(0, 0, 0, 0)
+        self._ray_btn = QPushButton(t("results.ray_btn"))
+        self._ray_btn.setToolTip("截取当前 3D 视图并保存为 PNG 图片")
+        self._ray_btn.clicked.connect(self._on_ray_capture)
+        ray_bar.addWidget(self._ray_btn)
+        ray_bar.addSpacing(8)
+        ray_bar.addWidget(QLabel(t("results.ray_bg_btn") + "："))
+        self._bg_color_btn = QPushButton()
+        self._bg_color_btn.setFixedSize(28, 22)
+        self._bg_color_btn.setToolTip("选择 Ray 截图的背景颜色")
+        self._bg_color_btn.clicked.connect(self._on_pick_bg_color)
+        self._update_bg_color_btn()
+        ray_bar.addWidget(self._bg_color_btn)
+        ray_bar.addStretch(1)
+        self._viewer_layout.addLayout(ray_bar)
+
         self._viewer_placeholder = QLabel("3D 预览将在有对接结果后初始化。")
         self._viewer_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._viewer_placeholder.setWordWrap(True)
-        self._viewer_layout.addWidget(self._viewer_placeholder)
+        self._viewer_layout.addWidget(self._viewer_placeholder, 1)
         splitter.addWidget(self._viewer_host)
 
         # ---- right: table + buttons
@@ -95,8 +121,37 @@ class ResultsPage(QWidget):
         if self._viewer is None:
             self._viewer = Viewer3D()
             self._viewer_placeholder.hide()
-            self._viewer_layout.addWidget(self._viewer)
+            self._viewer_layout.addWidget(self._viewer, 1)
+            # Apply current background choice to the newly created viewer
+            if self._ray_bg_color != self._DEFAULT_BG:
+                self._viewer.set_background_color(self._ray_bg_color)
         return self._viewer
+
+    def _destroy_viewer(self) -> None:
+        if self._viewer is None:
+            return
+        viewer = self._viewer
+        self._viewer = None
+        viewer.suspend_for_page_hide()
+        self._viewer_layout.removeWidget(viewer)
+        viewer.setParent(None)
+        viewer.deleteLater()
+        self._viewer_placeholder.show()
+
+    def on_page_leave(self) -> None:
+        self._destroy_viewer()
+
+    def on_page_enter(self) -> None:
+        if self._pdb_path is None:
+            return
+        rows = self._table.selectionModel().selectedRows()
+        idx = rows[0].row() if rows else 0
+        if self._poses_sdf_blocks and 0 <= idx < len(self._poses_sdf_blocks):
+            self._ensure_viewer().load_result_pose(
+                self._pdb_path, self._poses_sdf_blocks[idx]
+            )
+        else:
+            self._ensure_viewer().load_receptor(self._pdb_path)
 
     def set_context(self, receptor_info, ligand_info, pdb_path: Path) -> None:
         self._receptor_info = receptor_info
@@ -141,9 +196,11 @@ class ResultsPage(QWidget):
                     self._auto_screenshot = path
 
             def _do_capture() -> None:
-                # loadBestPose render() fired; wait one RAF frame (≈16 ms) then grab.
+                # loadBestPose render() fired; wait for GPU to flush several frames.
+                # Extra headroom so on_page_enter (called by _go_to_page right after
+                # set_result) doesn't overwrite this view before capture fires.
                 QTimer.singleShot(
-                    50, lambda: self._ensure_viewer().capture_png(_shot_path, callback=_auto_save)
+                    600, lambda: self._ensure_viewer().capture_png(_shot_path, callback=_auto_save)
                 )
 
             self._ensure_viewer().load_best_pose_for_export(
@@ -151,6 +208,54 @@ class ResultsPage(QWidget):
                 self._poses_sdf_blocks[0],
                 on_ready=_do_capture,
             )
+
+    # --- Ray / background helpers -----------------------------------------
+    def _update_bg_color_btn(self) -> None:
+        """Repaint the background-color swatch button."""
+        c = self._ray_bg_color
+        # Pick contrasting border so the button is visible on any theme
+        lum = 0.299 * int(c[1:3], 16) + 0.587 * int(c[3:5], 16) + 0.114 * int(c[5:7], 16)
+        border = "#888888" if lum > 128 else "#AAAAAA"
+        self._bg_color_btn.setStyleSheet(
+            f"QPushButton {{ background-color: {c}; border: 1px solid {border}; border-radius: 3px; }}"
+        )
+
+    def _on_pick_bg_color(self) -> None:
+        """Open colour dialog and apply the chosen background to the viewer."""
+        initial = QColor(self._ray_bg_color)
+        color = QColorDialog.getColor(initial, self, "选择 Ray 背景颜色")
+        if not color.isValid():
+            return
+        self._ray_bg_color = color.name()  # '#RRGGBB'
+        self._update_bg_color_btn()
+        if self._viewer is not None:
+            self._viewer.set_background_color(self._ray_bg_color)
+
+    def _on_ray_capture(self) -> None:
+        """Capture the current 3D view and save as PNG."""
+        if self._viewer is None:
+            QMessageBox.information(self, t("results.ray_btn"), "请先完成对接，再使用 Ray 截图。")
+            return
+        dest, _ = QFileDialog.getSaveFileName(
+            self, t("results.ray_btn"), "dockmeow_view.png", "PNG 图片 (*.png)"
+        )
+        if not dest:
+            return
+        out_path = Path(dest)
+
+        def _on_done(path: Path) -> None:
+            if path.exists():
+                QMessageBox.information(
+                    self, t("results.ray_btn"),
+                    t("results.ray_saved", path=str(path)),
+                )
+            else:
+                QMessageBox.warning(
+                    self, t("results.ray_btn"),
+                    t("results.ray_failed", err="文件未生成"),
+                )
+
+        self._viewer.capture_png(out_path, callback=_on_done)
 
     @staticmethod
     def _split_sdf(text: str) -> list[str]:
@@ -172,10 +277,10 @@ class ResultsPage(QWidget):
         if not rows or not self._poses_sdf_blocks:
             return
         idx = rows[0].row()
-        if 0 <= idx < len(self._poses_sdf_blocks):
-            if self._pdb_path:
-                self._ensure_viewer().load_receptor(self._pdb_path)
-            self._ensure_viewer().load_ligand_pose(self._poses_sdf_blocks[idx])
+        if 0 <= idx < len(self._poses_sdf_blocks) and self._pdb_path:
+            self._ensure_viewer().load_result_pose(
+                self._pdb_path, self._poses_sdf_blocks[idx]
+            )
 
     # --- exports -------------------------------------------------------
     def _export_sdf(self) -> None:
