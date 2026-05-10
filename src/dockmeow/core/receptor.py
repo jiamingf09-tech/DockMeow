@@ -22,6 +22,24 @@ from dockmeow.core.exceptions import ReceptorPreparationError
 
 _log = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Pre-load C-extensions in the main thread.
+#
+# On macOS, PyInstaller frozen bundles forbid dlopen() from non-main threads
+# (EXC_BAD_ACCESS in mach_o::Header::forEachLoadCommand).  This module is
+# always imported by prepare_worker → page_receptor → main_window inside
+# run(), i.e. in the main thread before any QThread worker starts.
+# The function-level lazy imports below are kept for proper error messages
+# when a package is genuinely absent.
+# ---------------------------------------------------------------------------
+try:
+    import pdbfixer as _pdbfixer_preload      # noqa: F401
+    import openmm as _openmm_preload          # noqa: F401
+    import openmm.app as _openmm_app_preload  # noqa: F401
+    import meeko as _meeko_preload            # noqa: F401
+except Exception:  # noqa: BLE001
+    pass
+
 # DNA and RNA residue names — these are NOT standard amino acids and will
 # cause PDBFixer's replaceNonstandardResidues() to raise KeyError.
 _DNA_RESNAMES = frozenset({"DA", "DC", "DG", "DT", "DI", "DU"})
@@ -577,15 +595,27 @@ def prepare_receptor(
     warnings.extend(meeko_warnings)
 
     # Auto-retry without addMissingAtoms if PDBQT came out empty (meeko's
-    # template matching fails when PDBFixer over-extends a structure).
+    # template matching fails when PDBFixer over-extends a structure).  Keep
+    # retry progress monotonic so the GUI does not appear to restart stage 1.
     if add_missing_atoms and output_pdbqt.exists() and output_pdbqt.stat().st_size == 0:
         _log.warning("PDBQT empty after first attempt; retrying without addMissingAtoms")
         warnings.append("PDBQT 首次生成为空，已自动以「不补全缺失原子」模式重试。")
-        _run_pdbfixer(raw_copy, fixed_pdb, False, ph, cb)
+        if cb:
+            cb("受体准备", 92, "首次 PDBQT 为空，正在使用兼容模式重试…")
+
+        def retry_cb(stage: str, pct: int, msg: str) -> None:
+            if cb is None:
+                return
+            mapped = 92 + max(0, min(100, int(pct))) * 7 // 100
+            cb(stage, mapped, msg)
+
+        _run_pdbfixer(raw_copy, fixed_pdb, False, ph, retry_cb if cb else None)
         fixed_text2 = fixed_pdb.read_text(encoding="utf-8", errors="replace")
         cleaned_text2, _ = _strip_hetatm(fixed_text2, keep=keep_hetero)
         clean_pdb.write_text(cleaned_text2, encoding="utf-8")
-        meeko_warnings2 = _pdb_to_pdbqt(clean_pdb, output_pdbqt, cb, original_pdb=raw_copy)
+        meeko_warnings2 = _pdb_to_pdbqt(
+            clean_pdb, output_pdbqt, retry_cb if cb else None, original_pdb=raw_copy
+        )
         warnings.extend(meeko_warnings2)
         chains, n_residues = _get_chains_and_residues(cleaned_text2)
 

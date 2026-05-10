@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging as _logging
+import os
 import sys
 import traceback as _traceback
 
@@ -11,6 +12,16 @@ from PySide6.QtWidgets import QApplication
 
 from dockmeow.utils.logging_setup import setup_logging
 from dockmeow.utils.paths import resource_path
+
+
+def _configure_webengine_flags() -> None:
+    """Install Chromium flags before QtWebEngine is imported."""
+    flag = "--disable-renderer-accessibility"
+    current = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    parts = current.split()
+    if flag not in parts:
+        parts.append(flag)
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(parts).strip()
 
 
 def _force_pyside_eager_import() -> None:
@@ -42,38 +53,6 @@ def _force_pyside_eager_import() -> None:
         except Exception:  # noqa: BLE001
             pass
 
-
-def _warm_up_scientific_imports() -> None:
-    """Pre-import every scientific C-extension used by worker threads.
-
-    Same macOS dyld rationale as _force_pyside_eager_import(): pdbfixer,
-    openmm, meeko, and rdkit all load shared libraries via dlopen.  The
-    first import of these inside a QThread (PrepareReceptorWorker /
-    PrepareLigandWorker / PocketWorker) crashes the process on macOS when
-    running as a PyInstaller .app bundle.
-
-    All imports are non-fatal: if a package is missing (e.g. stripped
-    build) we log and continue.
-    """
-    _sci = [
-        # Receptor pipeline
-        "pdbfixer",
-        "openmm",
-        "openmm.app",
-        "meeko",
-        # Ligand pipeline
-        "rdkit",
-        "rdkit.Chem",
-        "rdkit.Chem.AllChem",
-        # Pocket detection
-        "scipy",
-        "scipy.spatial",
-    ]
-    for _mod in _sci:
-        try:
-            __import__(_mod)
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def _install_excepthook() -> None:
@@ -140,6 +119,7 @@ def _check_license() -> dict | None:
 
 def run() -> int:
     """Full application lifecycle: create → license-check → main window → exec."""
+    _configure_webengine_flags()
     setup_logging()
     _install_excepthook()
     _log = _logging.getLogger("dockmeow")
@@ -149,12 +129,12 @@ def run() -> int:
     app = create_app()
     _log.info("DockMeow startup: QApplication ready")
 
-    # Pre-import all PySide6 sub-modules and scientific C-extensions in the
-    # main thread so worker QThreads never trigger dlopen (macOS dyld crash).
+    # Pre-import PySide6 sub-modules so worker QThreads never trigger
+    # Shiboken lazy-import / dlopen (macOS PyInstaller dyld crash).
+    # Scientific C-extensions are pre-loaded at module level in
+    # receptor.py and ligand.py which are imported via main_window below.
     _force_pyside_eager_import()
     _log.info("DockMeow startup: PySide eager import finished")
-    _warm_up_scientific_imports()
-    _log.info("DockMeow startup: scientific eager import finished")
 
     license_data = _check_license()
     _log.info("DockMeow startup: license check finished")

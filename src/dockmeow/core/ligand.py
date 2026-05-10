@@ -24,6 +24,14 @@ from dockmeow.core.exceptions import LigandPreparationError
 
 _log = logging.getLogger(__name__)
 
+# Pre-load C-extensions in the main thread (same reason as receptor.py).
+try:
+    import rdkit.Chem as _rdkit_preload          # noqa: F401
+    import rdkit.Chem.AllChem as _rdkit_ac       # noqa: F401
+    import meeko as _meeko_preload               # noqa: F401
+except Exception:  # noqa: BLE001
+    pass
+
 
 @dataclass
 class LigandInfo:
