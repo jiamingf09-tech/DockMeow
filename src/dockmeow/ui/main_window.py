@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -156,9 +156,21 @@ class MainWindow(QMainWindow):
     # --- nav -----------------------------------------------------------
     def _go_to_page(self, idx: int) -> None:
         idx = max(0, min(idx, self._stack.count() - 1))
+        old_idx = self._stack.currentIndex()
+        if old_idx != idx and old_idx >= 0:
+            old_page = self._stack.widget(old_idx)
+            leave_hook = getattr(old_page, "on_page_leave", None)
+            if callable(leave_hook):
+                leave_hook()
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         if idx == 2:
             self._prepare_pocket_page()
         self._stack.setCurrentIndex(idx)
+        if old_idx != idx:
+            new_page = self._stack.widget(idx)
+            enter_hook = getattr(new_page, "on_page_enter", None)
+            if callable(enter_hook):
+                enter_hook()
         self._nav.blockSignals(True)
         self._nav.setCurrentRow(idx)
         self._nav.blockSignals(False)
@@ -252,6 +264,10 @@ class MainWindow(QMainWindow):
                                 "请先完成受体、配体、口袋的准备。")
             return
 
+        # ── License / trial gate ──────────────────────────────────────────
+        if not self._check_license_gate():
+            return  # gate showed activation dialog; user cancelled or denied
+
         cfg = DockingConfig(
             receptor_pdbqt=self._receptor_info.pdbqt_path,
             ligand_pdbqt=self._ligand_info.pdbqt_path,
@@ -265,6 +281,42 @@ class MainWindow(QMainWindow):
         self._go_to_page(4)
         self._run_page.start(cfg)
 
+    def _check_license_gate(self) -> bool:
+        """Return True if docking may proceed (license valid or trial remaining).
+
+        Shows a warning / activation prompt when access should be denied.
+        Updates the status bar with current trial / license info.
+        """
+        from dockmeow.licensing.trial import get_trial_status
+
+        # Valid commercial license → always allowed.
+        if self._license_data is not None:
+            return True
+
+        trial = get_trial_status()
+        if trial.is_valid:
+            # Warn user on last free run so they know to activate.
+            if trial.uses_remaining == 1:
+                QMessageBox.information(
+                    self,
+                    "试用提示",
+                    f"这是您最后 1 次免费对接机会。\n"
+                    f"完成后请前往「文件 › 激活软件」输入许可证以继续使用。",
+                )
+            return True
+
+        # Trial exhausted — offer activation dialog.
+        reason = "试用次数已用完。" if trial.uses_expired else f"试用期（{14} 天）已结束。"
+        btn = QMessageBox.question(
+            self,
+            "需要激活",
+            f"{reason}\n\n请激活软件以继续使用。\n\n立即打开激活对话框？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if btn == QMessageBox.StandardButton.Yes:
+            self._open_activation()
+        return False  # do not start docking regardless
+
     def _on_run_finished(self, result) -> None:
         self._docking_result = result
         self._results_page.set_context(
@@ -272,6 +324,14 @@ class MainWindow(QMainWindow):
         )
         self._results_page.set_result(result)
         self._go_to_page(5)
+        # Consume one trial use (only when no commercial license).
+        if self._license_data is None:
+            from dockmeow.licensing.trial import consume_docking_run
+            consume_docking_run()
+        # Advance clock anchor to guard against rollback.
+        from dockmeow.licensing.time_guard import update_time_anchor
+        update_time_anchor()
+        self._update_license_status()
 
     def _reset_to_start(self) -> None:
         self._go_to_page(0)
@@ -297,4 +357,10 @@ class MainWindow(QMainWindow):
             email = str(self._license_data.get("email", ""))
             self._status_label.setText(t("status.activated", email=email))
         else:
-            self._status_label.setText(t("status.not_activated"))
+            # Show trial status when not activated.
+            try:
+                from dockmeow.licensing.trial import get_trial_status
+                trial = get_trial_status()
+                self._status_label.setText(trial.summary_zh)
+            except Exception:  # noqa: BLE001
+                self._status_label.setText(t("status.not_activated"))
