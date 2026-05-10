@@ -15,13 +15,33 @@ from dockmeow.utils.paths import resource_path
 
 
 def _configure_webengine_flags() -> None:
-    """Install Chromium flags before QtWebEngine is imported."""
-    flag = "--disable-renderer-accessibility"
+    """Install Chromium flags before QtWebEngine is imported.
+
+    Frozen (PyInstaller) macOS bundles require extra flags because:
+    - The app is not code-signed, so macOS refuses to spawn Chromium's
+      separate GPU subprocess → use --in-process-gpu to keep GPU in-process.
+    - Without a sandbox entitlement the Chromium sandbox init fails →
+      --no-sandbox disables it (acceptable for a local desktop tool with no
+      untrusted web content; we only render inline HTML + local PDB text).
+    - --disable-renderer-accessibility avoids VoiceOver/Chromium AX crashes.
+    """
+    _flags = [
+        "--disable-renderer-accessibility",
+    ]
+    if getattr(sys, "frozen", False):
+        # Additional stability flags for PyInstaller .app bundle
+        _flags += [
+            "--in-process-gpu",       # no separate GPU subprocess (unsigned app)
+            "--no-sandbox",           # no sandbox entitlement in unsigned bundle
+            "--disable-dev-shm-usage",  # avoid /dev/shm issues
+        ]
+
     current = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
     parts = current.split()
-    if flag not in parts:
-        parts.append(flag)
-        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(parts).strip()
+    for flag in _flags:
+        if flag not in parts:
+            parts.append(flag)
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(parts).strip()
 
 
 def _force_pyside_eager_import() -> None:
