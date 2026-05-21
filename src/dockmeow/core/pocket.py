@@ -20,6 +20,7 @@ from pathlib import Path
 
 from dockmeow.core.exceptions import PocketDetectionError
 from dockmeow.core.receptor import HeteroGroup, ReceptorInfo
+from dockmeow.utils.subprocess import hidden_subprocess_kwargs
 
 _log = logging.getLogger(__name__)
 
@@ -155,7 +156,9 @@ def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
         _shutil.copy2(receptor_pdb, local_pdb)
 
     out_dir = work_dir / f"{local_pdb.stem}_out"
-    cmd = [str(binary), "-f", str(local_pdb)]
+    # Run from work_dir and pass a local filename. Older fpocket releases do not
+    # parse Windows absolute paths with backslashes correctly.
+    cmd = [str(binary), "-f", local_pdb.name]
 
     _log.debug("Running fpocket: %s", " ".join(cmd))
     try:
@@ -165,6 +168,7 @@ def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
             text=True,
             timeout=120,
             cwd=str(work_dir),
+            **hidden_subprocess_kwargs(),
         )
     except OSError as exc:
         raise PocketDetectionError(

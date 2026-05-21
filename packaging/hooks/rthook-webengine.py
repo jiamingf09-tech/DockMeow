@@ -16,6 +16,15 @@ def _add_flag(flag: str) -> None:
         os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(parts).strip()
 
 
+def _remove_flags(*names: str) -> None:
+    current = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    parts = [
+        part for part in current.split()
+        if part.split("=", 1)[0] not in set(names)
+    ]
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(parts).strip()
+
+
 # ── Platform-specific Chromium stability flags ────────────────────────────────
 # --disable-renderer-accessibility : stop VoiceOver/AX (macOS) or MSAA (Windows)
 #   from descending into the Chromium AX tree, which causes crashes.
@@ -34,14 +43,42 @@ if _IS_MACOS:
         _add_flag(_flag)
 
 if _IS_WINDOWS:
+    os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
     # --no-sandbox : PyInstaller one-dir builds are not installed as a proper
     #   Windows service; Chromium's Win32 sandbox setup fails without it.
-    # --disable-gpu : avoids GPU driver crashes on some Windows VMs / CI machines.
-    #   Remove this if hardware-accelerated rendering is working on your system.
-    for _flag in [
-        "--no-sandbox",
-        "--disable-gpu",
-    ]:
+    # Windows hardware/VM support varies. Default to the stable CPU Canvas
+    # path; users can force webgl/gpu on machines with reliable py3Dmol WebGL.
+    _mode = os.environ.get("DOCKMEOW_WEBENGINE_MODE", "software").strip().lower()
+    _flags = ["--no-sandbox"]
+    if _mode in {"software", "canvas", "cpu", "auto"}:
+        _flags.append("--disable-gpu")
+    elif _mode == "swiftshader":
+        _remove_flags("--disable-gpu", "--disable-software-rasterizer")
+        _flags.extend([
+            "--ignore-gpu-blocklist",
+            "--enable-webgl",
+            "--enable-webgl2",
+            "--enable-unsafe-swiftshader",
+            "--use-gl=swiftshader-webgl",
+        ])
+    elif _mode in {"angle-d3d11", "d3d11", "gpu"}:
+        _remove_flags("--disable-gpu", "--disable-software-rasterizer")
+        _flags.extend([
+            "--ignore-gpu-blocklist",
+            "--enable-webgl",
+            "--enable-webgl2",
+            "--enable-unsafe-swiftshader",
+            "--use-angle=d3d11",
+        ])
+    else:
+        _remove_flags("--disable-gpu", "--disable-software-rasterizer")
+        _flags.extend([
+            "--ignore-gpu-blocklist",
+            "--enable-webgl",
+            "--enable-webgl2",
+            "--enable-unsafe-swiftshader",
+        ])
+    for _flag in _flags:
         _add_flag(_flag)
 
 # ── Resource paths ────────────────────────────────────────────────────────────
@@ -64,3 +101,14 @@ if hasattr(sys, "_MEIPASS"):
             if os.path.isdir(_locales):
                 os.environ.setdefault("QTWEBENGINE_LOCALES_PATH", _locales)
             break
+
+    if _IS_WINDOWS:
+        _process_candidates = [
+            os.path.join(_meipass, "PySide6", "QtWebEngineProcess.exe"),
+            os.path.join(_meipass, "QtWebEngineProcess.exe"),
+        ]
+        for _process in _process_candidates:
+            _process = os.path.normpath(_process)
+            if os.path.isfile(_process):
+                os.environ.setdefault("QTWEBENGINEPROCESS_PATH", _process)
+                break

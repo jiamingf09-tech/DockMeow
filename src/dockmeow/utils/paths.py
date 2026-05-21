@@ -75,3 +75,17 @@ def fpocket_binary() -> Path:
         sub = "linux"
         name = "fpocket"
     return resource_path(f"bundled/fpocket/{sub}/{name}")
+
+
+def vina_binary() -> Path:
+    """Return the bundled AutoDock Vina executable path for this platform."""
+    if sys.platform == "win32":
+        sub = "windows"
+        name = "vina.exe"
+    elif sys.platform == "darwin":
+        sub = "macos_arm64" if platform.machine() == "arm64" else "macos_x64"
+        name = "vina"
+    else:
+        sub = "linux"
+        name = "vina"
+    return resource_path(f"bundled/vina/{sub}/{name}")

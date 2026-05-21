@@ -26,6 +26,8 @@ import sys
 import uuid
 from pathlib import Path
 
+from dockmeow.utils.subprocess import hidden_subprocess_kwargs
+
 
 def _factor_motherboard() -> str:
     """Return the raw platform/motherboard UUID string."""
@@ -35,6 +37,7 @@ def _factor_motherboard() -> str:
                 ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
                 stderr=subprocess.DEVNULL,
                 timeout=5,
+                **hidden_subprocess_kwargs(),
             ).decode(errors="replace")
             for line in out.splitlines():
                 if "IOPlatformUUID" in line:
@@ -46,6 +49,7 @@ def _factor_motherboard() -> str:
                 ["wmic", "csproduct", "get", "UUID"],
                 stderr=subprocess.DEVNULL,
                 timeout=5,
+                **hidden_subprocess_kwargs(),
             ).decode(errors="replace")
             lines = [ln.strip() for ln in out.splitlines()
                      if ln.strip() and ln.strip() != "UUID"]
@@ -82,6 +86,7 @@ def _factor_mac() -> str:
                 ["ifconfig"],
                 stderr=subprocess.DEVNULL,
                 timeout=5,
+                **hidden_subprocess_kwargs(),
             ).decode(errors="replace")
             for block in out.split("\n\n"):
                 if block.startswith("lo") or "LOOPBACK" in block:
@@ -96,6 +101,7 @@ def _factor_mac() -> str:
                 ["getmac", "/fo", "csv", "/nh"],
                 stderr=subprocess.DEVNULL,
                 timeout=5,
+                **hidden_subprocess_kwargs(),
             ).decode(errors="replace")
             for line in out.splitlines():
                 parts = line.strip().strip('"').split('","')

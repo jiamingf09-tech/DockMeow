@@ -582,8 +582,26 @@ def prepare_receptor(
             f"PDB 含 DNA/RNA 时建议选择「移除核酸链」以确保处理成功。"
         )
 
-    fixer_warnings = _run_pdbfixer(raw_copy, fixed_pdb, add_missing_atoms, ph, cb)
-    warnings.extend(fixer_warnings)
+    used_pdbfixer = True
+    try:
+        fixer_warnings = _run_pdbfixer(raw_copy, fixed_pdb, add_missing_atoms, ph, cb)
+        warnings.extend(fixer_warnings)
+    except ModuleNotFoundError as exc:
+        used_pdbfixer = False
+        _log.warning("PDBFixer/OpenMM unavailable; using raw PDB fallback: %s", exc)
+        warnings.append(
+            "未检测到 OpenMM/PDBFixer，已跳过缺失残基/原子修复；"
+            "将直接清洗原始 PDB 并生成 PDBQT。"
+        )
+        if cb:
+            cb("受体准备", 40, "未检测到 OpenMM/PDBFixer，跳过结构修复。")
+        try:
+            shutil.copy2(raw_copy, fixed_pdb)
+        except OSError as copy_exc:
+            raise ReceptorPreparationError(
+                f"Cannot create fallback receptor PDB: {copy_exc}",
+                "无法创建受体准备临时文件。",
+            ) from copy_exc
 
     fixed_text = fixed_pdb.read_text(encoding="utf-8", errors="replace")
     cleaned_text, n_waters = _strip_hetatm(fixed_text, keep=keep_hetero)
@@ -597,7 +615,12 @@ def prepare_receptor(
     # Auto-retry without addMissingAtoms if PDBQT came out empty (meeko's
     # template matching fails when PDBFixer over-extends a structure).  Keep
     # retry progress monotonic so the GUI does not appear to restart stage 1.
-    if add_missing_atoms and output_pdbqt.exists() and output_pdbqt.stat().st_size == 0:
+    if (
+        used_pdbfixer
+        and add_missing_atoms
+        and output_pdbqt.exists()
+        and output_pdbqt.stat().st_size == 0
+    ):
         _log.warning("PDBQT empty after first attempt; retrying without addMissingAtoms")
         warnings.append("PDBQT 首次生成为空，已自动以「不补全缺失原子」模式重试。")
         if cb:

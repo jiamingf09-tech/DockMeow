@@ -301,6 +301,12 @@ def test_viewer_box_rendering_uses_orange_fill_and_wireframe() -> None:
     assert "#888888" in _HTML
     assert "wireframe:false" in _HTML
     assert "wireframe:true,linewidth:lineWidth" in _HTML
+    assert "function viewerStatus()" in _HTML
+    assert "function _probeWebGL()" in _HTML
+    assert "backend:_renderBackend" in _HTML
+    assert "py3dmol-webgl" in _HTML
+    assert "countsIndex" in _HTML
+    assert "atomStart = countsIndex + 1" in _HTML
 
 
 def test_webengine_flags_disable_renderer_accessibility(monkeypatch) -> None:
@@ -314,6 +320,70 @@ def test_webengine_flags_disable_renderer_accessibility(monkeypatch) -> None:
     flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"].split()
     assert "--disable-gpu" in flags
     assert flags.count("--disable-renderer-accessibility") == 1
+
+
+def test_webengine_flags_configure_windows_sandbox(monkeypatch) -> None:
+    from dockmeow import app as dockmeow_app
+
+    monkeypatch.setattr(dockmeow_app.sys, "platform", "win32")
+    monkeypatch.delenv("QTWEBENGINE_CHROMIUM_FLAGS", raising=False)
+    monkeypatch.delenv("QTWEBENGINE_DISABLE_SANDBOX", raising=False)
+    monkeypatch.delenv("DOCKMEOW_WEBENGINE_MODE", raising=False)
+
+    dockmeow_app._configure_webengine_flags()
+    dockmeow_app._configure_webengine_flags()
+
+    flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"].split()
+    assert flags.count("--disable-renderer-accessibility") == 1
+    assert flags.count("--no-sandbox") == 1
+    assert flags.count("--disable-gpu") == 1
+    assert "--enable-webgl" not in flags
+    assert os.environ["QTWEBENGINE_DISABLE_SANDBOX"] == "1"
+
+
+def test_webengine_flags_allow_windows_webgl_mode(monkeypatch) -> None:
+    from dockmeow import app as dockmeow_app
+
+    monkeypatch.setattr(dockmeow_app.sys, "platform", "win32")
+    monkeypatch.setenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
+    monkeypatch.setenv("DOCKMEOW_WEBENGINE_MODE", "webgl")
+
+    dockmeow_app._configure_webengine_flags()
+
+    flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"].split()
+    assert "--disable-gpu" not in flags
+    assert "--ignore-gpu-blocklist" in flags
+    assert "--enable-webgl" in flags
+    assert "--enable-webgl2" in flags
+    assert "--enable-unsafe-swiftshader" in flags
+
+
+def test_webengine_flags_allow_windows_cpu_canvas_mode(monkeypatch) -> None:
+    from dockmeow import app as dockmeow_app
+
+    monkeypatch.setattr(dockmeow_app.sys, "platform", "win32")
+    monkeypatch.setenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
+    monkeypatch.setenv("DOCKMEOW_WEBENGINE_MODE", "cpu")
+
+    dockmeow_app._configure_webengine_flags()
+
+    flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"].split()
+    assert "--disable-gpu" in flags
+    assert "--enable-webgl" not in flags
+
+
+def test_webengine_flags_allow_windows_software_mode(monkeypatch) -> None:
+    from dockmeow import app as dockmeow_app
+
+    monkeypatch.setattr(dockmeow_app.sys, "platform", "win32")
+    monkeypatch.delenv("QTWEBENGINE_CHROMIUM_FLAGS", raising=False)
+    monkeypatch.setenv("DOCKMEOW_WEBENGINE_MODE", "software")
+
+    dockmeow_app._configure_webengine_flags()
+
+    flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"].split()
+    assert "--disable-gpu" in flags
+    assert "--enable-webgl" not in flags
 
 
 def test_pyside_version_avoids_qtwebengine_accessibility_crash() -> None:

@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import builtins
+from pathlib import Path
+
 import pytest
 
+from dockmeow.core import docking as docking_module
 from dockmeow.core.docking import DockingConfig, DockingResult, run_docking
 from dockmeow.core.exceptions import DockingExecutionError
-
-pytest.importorskip("vina")
 
 
 @pytest.fixture(scope="module")
 def docking_result(tmp_path_factory, prepared_receptor, prepared_ligand):
     """Run one docking job (exhaustiveness=4 for speed); shared across module."""
+    pytest.importorskip("vina")
+
     import shutil
 
     from dockmeow.core.pocket import detect_pockets
@@ -82,3 +86,78 @@ class TestRunDocking:
         )
         with pytest.raises((DockingExecutionError, Exception)):
             run_docking(config)
+
+    def test_missing_vina_backends_raise_user_facing_error(self, tmp_path, monkeypatch):
+        """Missing optional Vina backends are reported as a DockMeow error."""
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "vina":
+                raise ModuleNotFoundError("No module named 'vina'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        monkeypatch.setattr(docking_module, "_vina_executable", lambda: None)
+
+        config = DockingConfig(
+            receptor_pdbqt=tmp_path / "receptor.pdbqt",
+            ligand_pdbqt=tmp_path / "ligand.pdbqt",
+            center=(0.0, 0.0, 0.0),
+            size=(20.0, 20.0, 20.0),
+        )
+        with pytest.raises(DockingExecutionError, match="Vina executable backend"):
+            run_docking(config)
+
+    def test_missing_python_vina_uses_cli_fallback(self, tmp_path, monkeypatch):
+        """Windows-style builds can dock through the bundled Vina executable."""
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "vina":
+                raise ModuleNotFoundError("No module named 'vina'")
+            return real_import(name, *args, **kwargs)
+
+        receptor = tmp_path / "receptor.pdbqt"
+        ligand = tmp_path / "ligand.pdbqt"
+        fake_vina = tmp_path / "vina.exe"
+        receptor.write_text("RECEPTOR\n", encoding="utf-8")
+        ligand.write_text("LIGAND\n", encoding="utf-8")
+        fake_vina.write_text("", encoding="utf-8")
+
+        class Completed:
+            returncode = 0
+            stdout = "   1       -7.50      0.000      0.000\n"
+            stderr = ""
+
+        def fake_run(cmd, **kwargs):
+            out_path = tmp_path / "missing.pdbqt"
+            if "--out" in cmd:
+                out_path = Path(cmd[cmd.index("--out") + 1])
+            out_path.write_text(
+                "MODEL 1\nREMARK VINA RESULT: -7.50 0.000 0.000\nENDMDL\n",
+                encoding="utf-8",
+            )
+            return Completed()
+
+        def fake_pdbqt_to_sdf(poses_pdbqt, output_sdf):
+            output_sdf.write_text("$$$$\n", encoding="utf-8")
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        monkeypatch.setattr(docking_module, "_vina_executable", lambda: fake_vina)
+        monkeypatch.setattr(docking_module.subprocess, "run", fake_run)
+        monkeypatch.setattr(docking_module, "_pdbqt_to_sdf", fake_pdbqt_to_sdf)
+
+        config = DockingConfig(
+            receptor_pdbqt=receptor,
+            ligand_pdbqt=ligand,
+            center=(1.0, 2.0, 3.0),
+            size=(20.0, 20.0, 20.0),
+        )
+
+        result = run_docking(config)
+
+        assert result.scores == [-7.5]
+        assert result.rmsd_lb == [0.0]
+        assert result.rmsd_ub == [0.0]
+        assert result.poses_pdbqt.exists()
+        assert result.poses_sdf.exists()
