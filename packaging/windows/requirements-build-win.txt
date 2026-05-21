@@ -1,12 +1,13 @@
 # Windows-specific build requirements for DockMeow.
 # Used by build_win.bat (and optionally build_win.ps1).
 #
-# Differences from requirements-build.txt (macOS/Linux):
-#   OpenMM   — no Windows wheel on PyPI; PDB-fixer feature silently
-#              disabled on Windows builds (already guarded by try/except).
-#   pdbfixer — depends on OpenMM; excluded for the same reason.
-#   vina     — has a PyPI wheel for Windows x64.  build_win.bat installs
-#              it automatically.  ARM64 users: install via conda instead.
+# Windows x64 builds use AMD64 Python 3.11. On Windows ARM machines, run this
+# x64 build under Windows emulation; native ARM64 wheels are not available for
+# every scientific dependency.
+#
+# Vina Python bindings are optional on Windows. DockMeow uses the bundled
+# src/dockmeow/bundled/vina/windows/vina.exe CLI fallback when the Python
+# binding is unavailable.
 
 biopython==1.87
 cffi==2.0.0
@@ -16,6 +17,8 @@ fonttools==4.62.1
 gemmi==0.7.5
 meeko==0.7.1
 numpy==2.4.4
+OpenMM==8.5.1
+pdbfixer==1.12.0
 pdfplumber==0.11.9
 Pillow==12.2.0
 py3Dmol==2.5.4

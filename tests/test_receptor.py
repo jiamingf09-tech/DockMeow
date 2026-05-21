@@ -125,3 +125,33 @@ class TestPrepareReceptor:
         assert calls["pdbqt"] == 2
         assert progress == sorted(progress)
         assert progress[-1] == 100
+
+    def test_missing_pdbfixer_uses_raw_pdb_fallback(self, tmp_path, monkeypatch):
+        """Windows builds without OpenMM/PDBFixer still prepare basic receptors."""
+        from dockmeow.core import receptor as receptor_mod
+
+        pdb = tmp_path / "mini.pdb"
+        pdb.write_text(
+            "ATOM      1  N   ALA A   1      11.104  13.207  14.099  1.00 20.00           N\n"
+            "HETATM    2  O   HOH A   2      12.000  13.000  14.000  1.00 20.00           O\n"
+            "END\n",
+            encoding="utf-8",
+        )
+
+        def fake_run_pdbfixer(input_pdb, output_pdb, add_missing_atoms, ph, cb):
+            raise ModuleNotFoundError("No module named 'openmm'")
+
+        def fake_pdb_to_pdbqt(input_pdb, output_pdbqt, cb, original_pdb=None):
+            text = input_pdb.read_text(encoding="utf-8")
+            assert "HOH" not in text
+            output_pdbqt.write_text("RECEPTOR\n", encoding="utf-8")
+            return []
+
+        monkeypatch.setattr(receptor_mod, "_run_pdbfixer", fake_run_pdbfixer)
+        monkeypatch.setattr(receptor_mod, "_pdb_to_pdbqt", fake_pdb_to_pdbqt)
+
+        info = receptor_mod.prepare_receptor(pdb, tmp_path / "work")
+
+        assert info.pdbqt_path.read_text(encoding="utf-8") == "RECEPTOR\n"
+        assert any("OpenMM/PDBFixer" in warning for warning in info.warnings)
+        assert info.waters_removed == 1

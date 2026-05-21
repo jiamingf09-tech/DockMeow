@@ -141,6 +141,8 @@ class TestFpocketMocked:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             pockets = _run_fpocket(fake_receptor_pdb, tmp_path)
 
+        assert mock_run.call_args.args[0] == [str(fake_binary), "-f", "fake_receptor.pdb"]
+        assert mock_run.call_args.kwargs["cwd"] == str(tmp_path)
         assert len(pockets) == 2
         assert all(p.source == "fpocket" for p in pockets)
         assert pockets[0].pocket_id == 1

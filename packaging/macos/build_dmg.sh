@@ -21,7 +21,9 @@ done
 PYTHONPATH=src VERSION=$(.venv-build/bin/python -c "from dockmeow.version import __version__; print(__version__)")
 ARCH=$(uname -m)   # arm64 or x86_64
 DMG_NAME="${APP_NAME}-${VERSION}-${ARCH}.dmg"
-DIST_APP="dist/DockMeow.app"
+DIST_BASE="dist/macos-${ARCH}"
+WORK_BASE="build/macos-${ARCH}"
+DIST_APP="${DIST_BASE}/DockMeow.app"
 
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  DockMeow ${VERSION} macOS ${ARCH} build"
@@ -31,7 +33,7 @@ echo "╚═══════════════════════�
 echo ""
 echo "▶ Running PyInstaller…"
 PYTHONPATH=src .venv-build/bin/pyinstaller packaging/dockmeow.spec \
-    --clean --noconfirm
+    --noconfirm --distpath "$DIST_BASE" --workpath "$WORK_BASE"
 
 if [[ ! -d "$DIST_APP" ]]; then
     echo "ERROR: $DIST_APP not found after PyInstaller run."
@@ -139,10 +141,14 @@ echo "  Entitlements embedded: $(codesign -d --entitlements - \
 echo ""
 echo "▶ Creating DMG: $DMG_NAME"
 
-rm -f "dist/$DMG_NAME"
+PACKAGE_PATH="dist/$DMG_NAME"
+ZIP_NAME="${APP_NAME}-${VERSION}-${ARCH}.zip"
+ZIP_PATH="dist/$ZIP_NAME"
+
+rm -f "$PACKAGE_PATH" "$ZIP_PATH"
 
 if command -v create-dmg &>/dev/null; then
-    create-dmg \
+    if ! create-dmg \
         --volname "$APP_NAME" \
         --window-pos 200 120 \
         --window-size 600 400 \
@@ -150,22 +156,30 @@ if command -v create-dmg &>/dev/null; then
         --icon "${APP_NAME}.app" 175 190 \
         --hide-extension "${APP_NAME}.app" \
         --app-drop-link 425 190 \
-        "dist/$DMG_NAME" \
-        "$DIST_APP"
+        "$PACKAGE_PATH" \
+        "$DIST_APP"; then
+        echo "  create-dmg failed; falling back to ZIP"
+        ditto -c -k --keepParent "$DIST_APP" "$ZIP_PATH"
+        PACKAGE_PATH="$ZIP_PATH"
+    fi
 else
     # Fallback: plain hdiutil
     echo "  create-dmg not found; using plain hdiutil"
-    hdiutil create -volname "$APP_NAME" -srcfolder "$DIST_APP" \
-        -ov -format UDZO "dist/$DMG_NAME"
+    if ! hdiutil create -volname "$APP_NAME" -srcfolder "$DIST_APP" \
+        -ov -format UDZO "$PACKAGE_PATH"; then
+        echo "  hdiutil failed; falling back to ZIP"
+        ditto -c -k --keepParent "$DIST_APP" "$ZIP_PATH"
+        PACKAGE_PATH="$ZIP_PATH"
+    fi
 fi
 
-SIZE=$(du -sh "dist/$DMG_NAME" | cut -f1)
+SIZE=$(du -sh "$PACKAGE_PATH" | cut -f1)
 echo ""
-echo "✓ DMG ready: dist/$DMG_NAME  ($SIZE)"
+echo "✓ Package ready: $PACKAGE_PATH  ($SIZE)"
 
 # ── Size check ───────────────────────────────────────────────────────────────
-SIZE_BYTES=$(stat -f%z "dist/$DMG_NAME")
+SIZE_BYTES=$(stat -f%z "$PACKAGE_PATH")
 LIMIT_BYTES=$((1500 * 1024 * 1024))  # 1.5 GB
 if [[ $SIZE_BYTES -gt $LIMIT_BYTES ]]; then
-    echo "⚠ WARNING: DMG exceeds 1.5 GB target (${SIZE})"
+    echo "⚠ WARNING: package exceeds 1.5 GB target (${SIZE})"
 fi

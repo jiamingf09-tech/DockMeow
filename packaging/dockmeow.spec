@@ -38,6 +38,8 @@ _OPENMM_APP_DATA = VENV_SP / "openmm" / "app" / "data"
 _PDBFIXER_TEMPLATES = VENV_SP / "pdbfixer" / "templates"
 _PDBFIXER_SOFT_XML = VENV_SP / "pdbfixer" / "soft.xml"
 _MEEKO_DATA = VENV_SP / "meeko" / "data"
+_QTWEBENGINE_PROCESS = VENV_SP / "PySide6" / "QtWebEngineProcess.exe"
+_QTWEBENGINE_LOCALES = VENV_SP / "PySide6" / "translations" / "qtwebengine_locales"
 
 # vina .so (macOS only — no arm64 PyPI wheel; copied from conda by CI)
 if IS_MACOS:
@@ -62,9 +64,12 @@ elif IS_LINUX:
     if fpocket.exists():
         _binaries.append((str(fpocket), "bundled/fpocket/linux"))
 elif IS_WINDOWS:
-    fpocket = SRC / "bundled" / "fpocket" / "windows_x64" / "fpocket.exe"
+    fpocket = SRC / "bundled" / "fpocket" / "windows" / "fpocket.exe"
     if fpocket.exists():
-        _binaries.append((str(fpocket), "bundled/fpocket/windows_x64"))
+        _binaries.append((str(fpocket), "bundled/fpocket/windows"))
+
+    if _QTWEBENGINE_PROCESS.exists():
+        _binaries.append((str(_QTWEBENGINE_PROCESS), "PySide6"))
 
 # OpenMM's PDB parser loads XML replacement tables via paths relative to
 # openmm.app.pdbfile.__file__.  In macOS bundles PyInstaller places collected
@@ -118,16 +123,27 @@ _datas = [
     # resource_path("bundled/fonts") -> sys._MEIPASS / "bundled/fonts"
     (str(SRC / "bundled"),          "bundled"),
     (str(SRC / "ui" / "resources"), "ui/resources"),
-    (str(_OPENMM_APP_DATA), "openmm/app/data"),
-    (str(_PDBFIXER_TEMPLATES), "pdbfixer/templates"),
-    (str(_PDBFIXER_SOFT_XML), "pdbfixer"),
-    (str(_MEEKO_DATA), "meeko/data"),
 ]
+
+
+def _add_data_if_exists(src_path, dest):
+    """Collect optional package data only when that dependency is installed."""
+    if src_path.exists():
+        _datas.append((str(src_path), dest))
+
+
+_add_data_if_exists(_OPENMM_APP_DATA, "openmm/app/data")
+_add_data_if_exists(_PDBFIXER_TEMPLATES, "pdbfixer/templates")
+_add_data_if_exists(_PDBFIXER_SOFT_XML, "pdbfixer")
+_add_data_if_exists(_MEEKO_DATA, "meeko/data")
 
 # Bundle QtWebEngine resources (.pak files, icudtl.dat, v8 snapshots, locales)
 # into _MEIPASS/webengine_resources/ so the runtime hook can point Qt to them.
 if _WEBENGINE_RESOURCES is not None:
     _datas.append((str(_WEBENGINE_RESOURCES), "webengine_resources"))
+
+if IS_WINDOWS and _QTWEBENGINE_LOCALES.exists():
+    _datas.append((str(_QTWEBENGINE_LOCALES), "webengine_resources/qtwebengine_locales"))
 
 # ── Hidden imports ────────────────────────────────────────────────────────────
 # Packages imported dynamically at runtime (not detected by static analysis)

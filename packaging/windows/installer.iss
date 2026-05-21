@@ -9,6 +9,9 @@
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.1"
 #endif
+#ifndef MyAppSourceDir
+  #define MyAppSourceDir "..\..\dist\windows-x64\DockMeow"
+#endif
 #define MyAppPublisher "DockMeow Team"
 #define MyAppExeName "DockMeow.exe"
 
@@ -42,7 +45,7 @@ Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.i
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\..\dist\DockMeow\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyAppSourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}";          Filename: "{app}\{#MyAppExeName}"
