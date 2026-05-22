@@ -46,11 +46,11 @@ if _IS_WINDOWS:
     os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
     # --no-sandbox : PyInstaller one-dir builds are not installed as a proper
     #   Windows service; Chromium's Win32 sandbox setup fails without it.
-    # Windows hardware/VM support varies. Default to the stable CPU Canvas
-    # path; users can force webgl/gpu on machines with reliable py3Dmol WebGL.
-    _mode = os.environ.get("DOCKMEOW_WEBENGINE_MODE", "software").strip().lower()
+    # Prefer ANGLE/D3D11 WebGL so Windows gets the same py3Dmol scene as macOS.
+    # Users can still force the stable CPU Canvas path with cpu/software/canvas.
+    _mode = os.environ.get("DOCKMEOW_WEBENGINE_MODE", "angle-d3d11").strip().lower()
     _flags = ["--no-sandbox"]
-    if _mode in {"software", "canvas", "cpu", "auto"}:
+    if _mode in {"software", "canvas", "cpu"}:
         _flags.append("--disable-gpu")
     elif _mode == "swiftshader":
         _remove_flags("--disable-gpu", "--disable-software-rasterizer")
@@ -61,7 +61,7 @@ if _IS_WINDOWS:
             "--enable-unsafe-swiftshader",
             "--use-gl=swiftshader-webgl",
         ])
-    elif _mode in {"angle-d3d11", "d3d11", "gpu"}:
+    elif _mode in {"angle-d3d11", "d3d11", "gpu", "auto"}:
         _remove_flags("--disable-gpu", "--disable-software-rasterizer")
         _flags.extend([
             "--ignore-gpu-blocklist",

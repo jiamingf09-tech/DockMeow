@@ -3,11 +3,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,8 +68,8 @@ class TestTrialStatus:
 
 class TestGetTrialStatus:
     def test_fresh_install_has_max_uses(self, tmp_path, monkeypatch):
-        from dockmeow.licensing import trial as trial_mod
         from dockmeow.licensing import state as state_mod
+        from dockmeow.licensing import trial as trial_mod
 
         monkeypatch.setattr(state_mod, "_state_path", lambda: tmp_path / ".dms")
         monkeypatch.setattr(trial_mod, "_load", state_mod.load_state)
@@ -86,7 +81,8 @@ class TestGetTrialStatus:
         assert ts.is_valid
 
     def test_consumed_uses_reduce_remaining(self, tmp_path, monkeypatch):
-        from dockmeow.licensing import trial as trial_mod, state as state_mod
+        from dockmeow.licensing import state as state_mod
+        from dockmeow.licensing import trial as trial_mod
 
         monkeypatch.setattr(state_mod, "_state_path", lambda: tmp_path / ".dms")
         monkeypatch.setattr(trial_mod, "_load", state_mod.load_state)
@@ -100,7 +96,8 @@ class TestGetTrialStatus:
         assert ts.uses_remaining == trial_mod.MAX_FREE_DOCKINGS - 3
 
     def test_all_uses_consumed_marks_uses_expired(self, tmp_path, monkeypatch):
-        from dockmeow.licensing import trial as trial_mod, state as state_mod
+        from dockmeow.licensing import state as state_mod
+        from dockmeow.licensing import trial as trial_mod
 
         monkeypatch.setattr(state_mod, "_state_path", lambda: tmp_path / ".dms")
         monkeypatch.setattr(trial_mod, "_load", state_mod.load_state)
@@ -116,7 +113,8 @@ class TestGetTrialStatus:
         assert not ts.is_valid
 
     def test_old_first_launch_marks_time_expired(self, tmp_path, monkeypatch):
-        from dockmeow.licensing import trial as trial_mod, state as state_mod
+        from dockmeow.licensing import state as state_mod
+        from dockmeow.licensing import trial as trial_mod
 
         monkeypatch.setattr(state_mod, "_state_path", lambda: tmp_path / ".dms")
         monkeypatch.setattr(trial_mod, "_load", state_mod.load_state)
@@ -139,7 +137,8 @@ class TestGetTrialStatus:
 
 class TestConsumeDockingRun:
     def test_consume_decrements_remaining(self, tmp_path, monkeypatch):
-        from dockmeow.licensing import trial as trial_mod, state as state_mod
+        from dockmeow.licensing import state as state_mod
+        from dockmeow.licensing import trial as trial_mod
 
         monkeypatch.setattr(state_mod, "_state_path", lambda: tmp_path / ".dms")
         monkeypatch.setattr(trial_mod, "_load", state_mod.load_state)
@@ -151,7 +150,8 @@ class TestConsumeDockingRun:
         assert after.uses_remaining == before.uses_remaining - 1
 
     def test_consume_five_times_exhausts_trial(self, tmp_path, monkeypatch):
-        from dockmeow.licensing import trial as trial_mod, state as state_mod
+        from dockmeow.licensing import state as state_mod
+        from dockmeow.licensing import trial as trial_mod
 
         monkeypatch.setattr(state_mod, "_state_path", lambda: tmp_path / ".dms")
         monkeypatch.setattr(trial_mod, "_load", state_mod.load_state)
@@ -168,7 +168,8 @@ class TestConsumeDockingRun:
         assert not ts.is_valid
 
     def test_consume_beyond_max_does_not_go_negative(self, tmp_path, monkeypatch):
-        from dockmeow.licensing import trial as trial_mod, state as state_mod
+        from dockmeow.licensing import state as state_mod
+        from dockmeow.licensing import trial as trial_mod
 
         monkeypatch.setattr(state_mod, "_state_path", lambda: tmp_path / ".dms")
         monkeypatch.setattr(trial_mod, "_load", state_mod.load_state)
@@ -182,7 +183,8 @@ class TestConsumeDockingRun:
         assert ts.uses_remaining == 0
 
     def test_consume_persists_across_reload(self, tmp_path, monkeypatch):
-        from dockmeow.licensing import trial as trial_mod, state as state_mod
+        from dockmeow.licensing import state as state_mod
+        from dockmeow.licensing import trial as trial_mod
 
         monkeypatch.setattr(state_mod, "_state_path", lambda: tmp_path / ".dms")
         monkeypatch.setattr(trial_mod, "_load", state_mod.load_state)

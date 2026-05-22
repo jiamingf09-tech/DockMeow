@@ -300,8 +300,8 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(
                     self,
                     "试用提示",
-                    f"这是您最后 1 次免费对接机会。\n"
-                    f"完成后请前往「文件 › 激活软件」输入许可证以继续使用。",
+                    "这是您最后 1 次免费对接机会。\n"
+                    "完成后请前往「文件 › 激活软件」输入许可证以继续使用。",
                 )
             return True
 

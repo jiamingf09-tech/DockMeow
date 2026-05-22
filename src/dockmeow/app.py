@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging as _logging
 import os
 import sys
-import traceback as _traceback
 import time as _time
+import traceback as _traceback
 from pathlib import Path as _Path
 
 from PySide6.QtCore import Qt
@@ -26,11 +26,10 @@ def _configure_webengine_flags() -> None:
     - Without a sandbox entitlement the Chromium sandbox init fails →
       --no-sandbox disables it (acceptable for a local desktop tool with no
       untrusted web content; we only render inline HTML + local PDB text).
-    - On Windows, WebGL behavior varies across physical GPUs, Parallels/ARM
-      VMs, and software renderers. SwiftShader/WebGL flags can crash before
-      JS fallback runs on some VMs, so the default is the stable CPU Canvas
-      path. Operators can opt into py3Dmol WebGL on physical GPUs with
-      DOCKMEOW_WEBENGINE_MODE=webgl/gpu.
+    - On Windows, prefer ANGLE/D3D11 WebGL so py3Dmol can render the same
+      colorful cartoon/stick scene as macOS. Operators can still opt into the
+      stable CPU Canvas path with DOCKMEOW_WEBENGINE_MODE=cpu/software/canvas
+      on machines with broken WebGL drivers.
     - --disable-renderer-accessibility avoids VoiceOver/MSAA Chromium AX crashes.
     """
     _flags = [
@@ -45,9 +44,9 @@ def _configure_webengine_flags() -> None:
         ]
     elif sys.platform == "win32":
         os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
-        mode = os.environ.get("DOCKMEOW_WEBENGINE_MODE", "software").strip().lower()
+        mode = os.environ.get("DOCKMEOW_WEBENGINE_MODE", "angle-d3d11").strip().lower()
         _flags += ["--no-sandbox"]
-        if mode in {"software", "canvas", "cpu", "auto"}:
+        if mode in {"software", "canvas", "cpu"}:
             _flags += ["--disable-gpu"]
         elif mode == "swiftshader":
             _flags += [
@@ -57,7 +56,7 @@ def _configure_webengine_flags() -> None:
                 "--enable-unsafe-swiftshader",
                 "--use-gl=swiftshader-webgl",
             ]
-        elif mode in {"angle-d3d11", "d3d11", "gpu"}:
+        elif mode in {"angle-d3d11", "d3d11", "gpu", "auto"}:
             _flags += [
                 "--ignore-gpu-blocklist",
                 "--enable-webgl",
@@ -75,8 +74,8 @@ def _configure_webengine_flags() -> None:
 
     current = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
     parts = current.split()
-    webengine_mode = os.environ.get("DOCKMEOW_WEBENGINE_MODE", "software").strip().lower()
-    if sys.platform == "win32" and webengine_mode not in {"software", "canvas", "cpu", "auto"}:
+    webengine_mode = os.environ.get("DOCKMEOW_WEBENGINE_MODE", "angle-d3d11").strip().lower()
+    if sys.platform == "win32" and webengine_mode not in {"software", "canvas", "cpu"}:
         parts = [
             part for part in parts
             if part.split("=", 1)[0]
@@ -195,7 +194,6 @@ def _run_e2e_smoke(app: QApplication) -> int:
     from dockmeow.core.receptor import prepare_receptor
     from dockmeow.ui.widgets.viewer_3d import Viewer3D
 
-    log = _logging.getLogger("dockmeow.smoke")
     root = _Path(__file__).resolve().parents[2]
     default_pdb = root / "example" / "1SVC.pdb"
     default_ligand = root / "example" / "Ailanthone.sdf"
@@ -304,8 +302,8 @@ def _run_e2e_smoke(app: QApplication) -> int:
         result_data[f"{key}_viewer_status"] = status
         fallback_allowed = (
             bool(os.environ.get("DOCKMEOW_SMOKE_ALLOW_FALLBACK"))
-            or os.environ.get("DOCKMEOW_WEBENGINE_MODE", "software").strip().lower()
-            in {"software", "canvas", "cpu", "auto"}
+            or os.environ.get("DOCKMEOW_WEBENGINE_MODE", "angle-d3d11").strip().lower()
+            in {"software", "canvas", "cpu"}
         )
         if "fallback" not in status and not fallback_allowed:
             raise RuntimeError(f"3D viewer status unavailable: {status!r}")

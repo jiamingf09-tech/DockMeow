@@ -217,7 +217,8 @@ class ResultsPage(QWidget):
         lum = 0.299 * int(c[1:3], 16) + 0.587 * int(c[3:5], 16) + 0.114 * int(c[5:7], 16)
         border = "#888888" if lum > 128 else "#AAAAAA"
         self._bg_color_btn.setStyleSheet(
-            f"QPushButton {{ background-color: {c}; border: 1px solid {border}; border-radius: 3px; }}"
+            f"QPushButton {{ background-color: {c}; "
+            f"border: 1px solid {border}; border-radius: 3px; }}"
         )
 
     def _on_pick_bg_color(self) -> None:

@@ -33,10 +33,10 @@ _log = logging.getLogger(__name__)
 # when a package is genuinely absent.
 # ---------------------------------------------------------------------------
 try:
-    import pdbfixer as _pdbfixer_preload      # noqa: F401
-    import openmm as _openmm_preload          # noqa: F401
+    import meeko as _meeko_preload  # noqa: F401
+    import openmm as _openmm_preload  # noqa: F401
     import openmm.app as _openmm_app_preload  # noqa: F401
-    import meeko as _meeko_preload            # noqa: F401
+    import pdbfixer as _pdbfixer_preload  # noqa: F401
 except Exception:  # noqa: BLE001
     pass
 

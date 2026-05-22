@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import runpy
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -312,6 +313,7 @@ def test_viewer_box_rendering_uses_orange_fill_and_wireframe() -> None:
 def test_webengine_flags_disable_renderer_accessibility(monkeypatch) -> None:
     from dockmeow import app as dockmeow_app
 
+    monkeypatch.setattr(dockmeow_app.sys, "platform", "linux")
     monkeypatch.setenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
 
     dockmeow_app._configure_webengine_flags()
@@ -326,7 +328,7 @@ def test_webengine_flags_configure_windows_sandbox(monkeypatch) -> None:
     from dockmeow import app as dockmeow_app
 
     monkeypatch.setattr(dockmeow_app.sys, "platform", "win32")
-    monkeypatch.delenv("QTWEBENGINE_CHROMIUM_FLAGS", raising=False)
+    monkeypatch.setenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
     monkeypatch.delenv("QTWEBENGINE_DISABLE_SANDBOX", raising=False)
     monkeypatch.delenv("DOCKMEOW_WEBENGINE_MODE", raising=False)
 
@@ -336,8 +338,12 @@ def test_webengine_flags_configure_windows_sandbox(monkeypatch) -> None:
     flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"].split()
     assert flags.count("--disable-renderer-accessibility") == 1
     assert flags.count("--no-sandbox") == 1
-    assert flags.count("--disable-gpu") == 1
-    assert "--enable-webgl" not in flags
+    assert "--disable-gpu" not in flags
+    assert "--ignore-gpu-blocklist" in flags
+    assert "--enable-webgl" in flags
+    assert "--enable-webgl2" in flags
+    assert "--enable-unsafe-swiftshader" in flags
+    assert "--use-angle=d3d11" in flags
     assert os.environ["QTWEBENGINE_DISABLE_SANDBOX"] == "1"
 
 
@@ -384,6 +390,23 @@ def test_webengine_flags_allow_windows_software_mode(monkeypatch) -> None:
     flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"].split()
     assert "--disable-gpu" in flags
     assert "--enable-webgl" not in flags
+
+
+def test_webengine_runtime_hook_defaults_windows_to_d3d11(monkeypatch) -> None:
+    hook_path = Path(__file__).parent.parent / "packaging" / "hooks" / "rthook-webengine.py"
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
+    monkeypatch.delenv("QTWEBENGINE_DISABLE_SANDBOX", raising=False)
+    monkeypatch.delenv("DOCKMEOW_WEBENGINE_MODE", raising=False)
+
+    runpy.run_path(str(hook_path))
+
+    flags = os.environ["QTWEBENGINE_CHROMIUM_FLAGS"].split()
+    assert "--disable-gpu" not in flags
+    assert "--enable-webgl" in flags
+    assert "--use-angle=d3d11" in flags
+    assert os.environ["QTWEBENGINE_DISABLE_SANDBOX"] == "1"
 
 
 def test_pyside_version_avoids_qtwebengine_accessibility_crash() -> None:

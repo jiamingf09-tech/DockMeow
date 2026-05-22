@@ -59,8 +59,17 @@ class TestGetMachineFactors:
 
 class TestMatchMachine:
     @pytest.fixture()
-    def current(self):
-        return get_machine_factors()
+    def current(self, monkeypatch):
+        factors = {
+            "mb": "aaaaaaaaaaaaaaaa",
+            "cpu": "bbbbbbbbbbbbbbbb",
+            "mac": "cccccccccccccccc",
+        }
+        monkeypatch.setattr(
+            "dockmeow.licensing.machine.get_machine_factors",
+            lambda: factors,
+        )
+        return factors
 
     def test_exact_match_passes(self, current):
         assert match_machine(current) is True
@@ -77,15 +86,14 @@ class TestMatchMachine:
         assert match_machine(stored) is False
 
     def test_zero_match_fails(self, current):
-        stored = {"mb": "aaaaaaaaaaaaaaaa", "cpu": "bbbbbbbbbbbbbbbb", "mac": "cccccccccccccccc"}
+        stored = {"mb": "0000000000000000", "cpu": "1111111111111111", "mac": "2222222222222222"}
         assert match_machine(stored) is False
 
     def test_empty_stored_factors_returns_false(self):
         assert match_machine({}) is False
 
-    def test_single_factor_stored_passes_when_matching(self):
+    def test_single_factor_stored_passes_when_matching(self, current):
         """If only one factor is stored and it matches, compared==1 → min(2,1)=1 match needed."""
-        current = get_machine_factors()
         stored = {"cpu": current["cpu"]}
         assert match_machine(stored) is True
 
