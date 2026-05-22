@@ -137,7 +137,7 @@ jobs:
       - name: Build Windows installer
         if: runner.os == 'Windows'
         shell: cmd
-        run: iscc packaging\windows\installer.iss
+        run: iscc /DMyAppSourceDir=..\..\dist\DockMeow packaging\windows\installer.iss
 
       # ── Package: Linux AppImage ───────────────────────────────────────────
       - name: Package Linux AppImage
