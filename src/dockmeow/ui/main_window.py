@@ -273,6 +273,7 @@ class MainWindow(QMainWindow):
             ligand_pdbqt=self._ligand_info.pdbqt_path,
             center=self._pocket.center,
             size=self._pocket.size,
+            pocket_source=getattr(self._pocket, "source", "config") or "config",
             exhaustiveness=int(params["exhaustiveness"]),
             num_modes=int(params["num_modes"]),
             energy_range=float(params["energy_range"]),

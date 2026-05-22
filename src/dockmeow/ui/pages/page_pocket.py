@@ -26,7 +26,7 @@ from dockmeow.ui.widgets.viewer_3d import Viewer3D
 from dockmeow.workers.pocket_worker import PocketWorker
 
 _WINDOWS_FPOCKET_WARNING = (
-    '⚠️ Windows 版本暂不支持自动口袋检测。'
+    '⚠️ 当前安装包未检测到可用 fpocket 自动口袋检测组件。'
     '如本结构无共结晶配体，请选择“全蛋白盲对接”或手动指定坐标。'
 )
 

@@ -45,6 +45,7 @@ class DockingConfig:
     ligand_pdbqt: Path
     center: tuple[float, float, float]
     size: tuple[float, float, float]
+    pocket_source: str = "config"
     exhaustiveness: int = 16
     num_modes: int = 9
     energy_range: float = 3.0

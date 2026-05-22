@@ -14,6 +14,7 @@ No PySide6 imports permitted in this module.
 from __future__ import annotations
 
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from dockmeow.core.exceptions import DockMeowError
 from dockmeow.core.ligand import LigandInfo
 from dockmeow.core.pocket import Pocket
 from dockmeow.core.receptor import ReceptorInfo
-from dockmeow.utils.paths import resource_path
+from dockmeow.utils.paths import fpocket_binary, resource_path
 from dockmeow.version import __version__
 
 _log = logging.getLogger(__name__)
@@ -413,6 +414,27 @@ def _truncate(s: str, n: int) -> str:
     return s if len(s) <= n else s[:n - 3] + "..."
 
 
+def _pocket_source_from_config(cfg) -> str:
+    return str(getattr(cfg, "pocket_source", "") or "config")
+
+
+def _windows_fpocket_notice(pocket: Pocket) -> str:
+    if sys.platform != "win32":
+        return ""
+    if pocket.source in {"cocrystal", "fpocket"}:
+        return ""
+    try:
+        if fpocket_binary().exists():
+            return ""
+    except Exception:  # noqa: BLE001
+        pass
+    return (
+        "⚠️ 平台说明：本报告在 Windows 上生成。"
+        "当前安装包未检测到可用 fpocket 自动口袋检测组件，"
+        f'本次对接使用口袋来源："{pocket.source}"。'
+    )
+
+
 def generate_report(
     receptor_info,
     ligand_info,
@@ -440,7 +462,7 @@ def generate_report(
             center=cfg.center,
             size=cfg.size,
             score=0.0,
-            source="config",
+            source=_pocket_source_from_config(cfg),
         )
     else:
         pocket = Pocket(
@@ -460,15 +482,7 @@ def generate_report(
         except Exception:
             pass
 
-    # Build platform notice for Windows runs without fpocket
-    import sys as _sys
-    _os_warning = ""
-    if _sys.platform == "win32" and pocket.source not in ("cocrystal",):
-        _os_warning = (
-            "⚠️ 平台说明：本报告在 Windows 上生成。"
-            "Windows 版本暂不支持 fpocket 自动口袋检测，"
-            '本次对接使用口袋来源："%s"。' % pocket.source
-        )
+    _os_warning = _windows_fpocket_notice(pocket)
 
     data = ReportData(
         project_name=project_name,

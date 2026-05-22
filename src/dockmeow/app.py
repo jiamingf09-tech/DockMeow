@@ -354,6 +354,7 @@ def _run_e2e_smoke(app: QApplication) -> int:
                     ligand_pdbqt=ligand.pdbqt_path,
                     center=pocket.center,
                     size=pocket.size,
+                    pocket_source=getattr(pocket, "source", "config") or "config",
                     exhaustiveness=int(
                         os.environ.get("DOCKMEOW_SMOKE_EXHAUSTIVENESS", "1")
                     ),

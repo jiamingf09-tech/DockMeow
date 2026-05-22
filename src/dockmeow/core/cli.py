@@ -146,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
             ligand_pdbqt=lig_in_work,
             center=selected.center,
             size=selected.size,
+            pocket_source=selected.source,
             exhaustiveness=args.exhaustiveness,
             num_modes=args.num_modes,
             seed=args.seed,
