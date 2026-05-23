@@ -339,6 +339,38 @@ def _build_html() -> str:
         "    pngURI:function(){_fallbackDraw(); return _fallbackCanvas.toDataURL('image/png');}"
         "  };"
         "}"
+        "function syncViewerSize() {"
+        "  var host = document.getElementById('v');"
+        "  var w = Math.max(200, host.clientWidth || window.innerWidth || 900);"
+        "  var h = Math.max(200, host.clientHeight || window.innerHeight || 650);"
+        "  if (_fallbackActive) { _fallbackResize(); return {width:w,height:h,fallback:true}; }"
+        "  try {"
+        "    if (_v && typeof _v.resize === 'function') { _v.resize(); }"
+        "    var canvas = host.querySelector('canvas');"
+        "    if (canvas) { canvas.style.width = w + 'px'; canvas.style.height = h + 'px'; }"
+        "    if (_v && _v.renderer && typeof _v.renderer.setPixelRatio === 'function') {"
+        "      _v.renderer.setPixelRatio(window.devicePixelRatio || 1);"
+        "    }"
+        "    if (_v && _v.renderer && typeof _v.renderer.setSize === 'function') {"
+        "      _v.renderer.setSize(w, h, true);"
+        "    }"
+        "    if (_v && _v.camera) {"
+        "      _v.camera.aspect = w / h;"
+        "      if (typeof _v.camera.updateProjectionMatrix === 'function') {"
+        "        _v.camera.updateProjectionMatrix();"
+        "      }"
+        "    }"
+        "    return {width:w,height:h,fallback:false,"
+        "            canvasWidth:canvas ? canvas.width : 0,"
+        "            canvasHeight:canvas ? canvas.height : 0};"
+        "  } catch (e) {"
+        "    return {width:w,height:h,fallback:false,error:String(e && (e.message || e))};"
+        "  }"
+        "}"
+        "window.addEventListener('resize', function() {"
+        "  syncViewerSize();"
+        "  try { if (_v) { _v.render(); } } catch (e) {}"
+        "});"
         "try {"
         "  _webglInfo = _probeWebGL();"
         "  if (!_webglInfo.available) { throw new Error(_webglInfo.error || 'WebGL unavailable'); }"
@@ -351,14 +383,17 @@ def _build_html() -> str:
         "  console.error('3Dmol WebGL unavailable; using Canvas fallback:', e);"
         "  _v = _fallbackViewer();"
         "}"
+        "syncViewerSize();"
         # ---- public JS API called from Python via runJavaScript ----
         "function loadReceptor(pdbText) {"
+        "  syncViewerSize();"
         "  _v.removeAllModels(); _v.removeAllShapes();"
         "  _v.addModel(pdbText, 'pdb');"
         "  _v.setStyle({}, {cartoon:{color:'spectrum'}});"
         "  _v.zoomTo(); _v.render();"
         "}"
         "function loadLigand(sdfText) {"
+        "  syncViewerSize();"
         "  _v.addModel(sdfText, 'sdf');"
         "  _v.setStyle({model:-1}, {stick:{colorscheme:'greenCarbon'}});"
         "  _v.zoomTo({model:-1}); _v.zoom(0.7); _v.render();"
@@ -411,6 +446,7 @@ def _build_html() -> str:
         #     points toward the camera (+Z), further reducing occlusion.
         #   • Proper edge-case handling for dz≈±1 and degenerate geometries.
         "function loadBestPose(pdbText, sdfText) {"
+        "  syncViewerSize();"
         "  _v.removeAllModels(); _v.removeAllShapes();"
         "  _v.addModel(pdbText, 'pdb');"
         # Semi-transparent protein so the ligand shows through the ribbon
@@ -469,18 +505,22 @@ def _build_html() -> str:
         "}"
         # Screenshot: render → wait for GPU frame → return pngURI
         "function requestScreenshot() {"
+        "  syncViewerSize();"
         "  _v.render();"
         "  return new Promise(function(resolve) {"
         "    requestAnimationFrame(function() {"
-        "      resolve(_v.pngURI());"
+        "      syncViewerSize();"
+        "      _v.render();"
+        "      requestAnimationFrame(function() { resolve(_v.pngURI()); });"
         "    });"
         "  });"
         "}"
         "function viewerStatus() {"
         "  var atoms = 0;"
+        "  var size = syncViewerSize();"
         "  try { atoms = _v.selectedAtoms({}).length; } catch (e) { atoms = -1; }"
         "  return {fallback:!!_fallbackActive, backend:_renderBackend,"
-        "          webgl:_webglInfo, atoms:atoms};"
+        "          webgl:_webglInfo, atoms:atoms, size:size};"
         "}"
         "</script>"
         "</body></html>"
@@ -502,6 +542,7 @@ class Viewer3D(QWebEngineView):
         self._pending: list[str] = []
         self._pending_callbacks: list[Callable[[], None]] = []
         self._bg_color: str = self.DEFAULT_BG
+        self._capture_token = 0
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setAccessibleName("DockMeow 3D preview")
         self.setAccessibleDescription("Molecular preview rendered by Qt WebEngine")
@@ -556,6 +597,11 @@ class Viewer3D(QWebEngineView):
             self.page().runJavaScript(js)
         else:
             self._pending.append(js)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        if self._ready:
+            self.page().runJavaScript("syncViewerSize();")
 
     # ------------------------------------------------------------------
     def load_receptor(self, pdb_path: Path) -> None:
@@ -738,17 +784,51 @@ class Viewer3D(QWebEngineView):
             QTimer.singleShot(800, lambda: self.capture_png(output_path, callback))
             return
 
-        # render() → wait one animation frame → read pngURI
+        # render() → wait two animation frames → read pngURI.  Avoid returning
+        # a JS Promise directly; some Qt WebEngine builds hand the unresolved
+        # Promise object back to Python, which forces a QWidget.grab() fallback.
         # worldId=0 (MainWorld) keeps this compatible with PySide6 ≤ 6.7 and 6.11+
         def _request() -> None:
+            self._capture_token += 1
+            token = self._capture_token
             self.page().runJavaScript(
-                "new Promise(function(res) {"
+                "(function() {"
+                f"  window._dmScreenshotToken = {token};"
+                "  window._dmScreenshotReady = false;"
+                "  window._dmScreenshotUri = '';"
+                "  syncViewerSize();"
                 "  _v.render();"
-                "  requestAnimationFrame(function() { res(_v.pngURI()); });"
-                "});",
+                "  requestAnimationFrame(function() {"
+                "    syncViewerSize();"
+                "    _v.render();"
+                "    requestAnimationFrame(function() {"
+                f"      if (window._dmScreenshotToken === {token}) {{"
+                "        window._dmScreenshotUri = _v.pngURI();"
+                "        window._dmScreenshotReady = true;"
+                "      }"
+                "    });"
+                "  });"
+                "  return true;"
+                "})();",
                 0,
-                _on_png_uri,
             )
+
+            def _poll(attempt: int = 0) -> None:
+                if attempt >= 30:
+                    _on_png_uri(None)
+                    return
+                self.page().runJavaScript(
+                    f"(window._dmScreenshotToken === {token} && "
+                    "window._dmScreenshotReady) ? window._dmScreenshotUri : null;",
+                    0,
+                    lambda result: (
+                        _on_png_uri(result)
+                        if result
+                        else QTimer.singleShot(100, lambda: _poll(attempt + 1))
+                    ),
+                )
+
+            QTimer.singleShot(80, _poll)
 
         QTimer.singleShot(50, _request)
 

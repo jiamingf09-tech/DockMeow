@@ -9,6 +9,11 @@ Usage (command-line):
 
     python tools/issue_license.py --type perpetual \\
         --email user@example.com \\
+        --machine-id DM-853caa58-9fd8639c-a3e827c6
+
+Legacy full-factor mode is still supported:
+    python tools/issue_license.py --type perpetual \\
+        --email user@example.com \\
         --machine-factors mb=abc12345...,cpu=def67890...,mac=1234abcd...
 
 Usage (interactive — omit all flags):
@@ -30,6 +35,9 @@ from pathlib import Path
 _REPO_ROOT       = Path(__file__).parent.parent
 PRIVATE_KEY_PATH = _REPO_ROOT / "dockmeow_private.pem"
 ISSUED_DIR       = _REPO_ROOT / "issued"
+_SRC_PATH        = _REPO_ROOT / "src"
+if _SRC_PATH.exists():
+    sys.path.insert(0, str(_SRC_PATH))
 
 # Trial duration in seconds (24 hours)
 TRIAL_DURATION_SECONDS = 24 * 3600
@@ -94,7 +102,8 @@ def _sign(private_key, payload: dict) -> str:
 def issue(
     license_type: str,
     email: str,
-    machine_factors: dict[str, str],
+    machine_factors: dict[str, str] | None = None,
+    machine_id: str | None = None,
     license_id: str | None = None,
     private_key_path: Path = PRIVATE_KEY_PATH,
 ) -> Path:
@@ -103,7 +112,8 @@ def issue(
     Args:
         license_type:    ``"trial"`` or ``"perpetual"``.
         email:           Licensee email address.
-        machine_factors: Dict with ``mb``, ``cpu``, ``mac`` keys (16-char hex each).
+        machine_factors: Legacy dict with ``mb``, ``cpu``, ``mac`` keys.
+        machine_id:      Copyable device ID shown by the app (preferred).
         license_id:      Optional explicit UUID; auto-generated if None.
         private_key_path: Path to the RSA private key PEM file.
 
@@ -112,6 +122,8 @@ def issue(
     """
     if license_type not in ("trial", "perpetual"):
         raise ValueError(f"license_type must be 'trial' or 'perpetual', got {license_type!r}")
+    if not machine_id and not machine_factors:
+        raise ValueError("machine_id or machine_factors is required")
 
     now = time.time()
     lid = license_id or str(uuid.uuid4())
@@ -127,8 +139,12 @@ def issue(
         "type":       license_type,
         "issued_at":  now,
         "expires_at": expires_at,
-        "machine":    machine_factors,
     }
+    if machine_id:
+        from dockmeow.licensing.machine import normalize_machine_id
+        payload["machine_id"] = normalize_machine_id(machine_id)
+    if machine_factors:
+        payload["machine"] = machine_factors
 
     private_key = _load_private_key(private_key_path)
     payload["signature"] = _sign(private_key, payload)
@@ -153,8 +169,8 @@ def _parse_factors(factors_str: str) -> dict[str, str]:
     return result
 
 
-def _interactive() -> tuple[str, str, dict[str, str]]:
-    """Prompt the operator interactively and return (type, email, factors)."""
+def _interactive() -> tuple[str, str, dict[str, str] | None, str | None]:
+    """Prompt the operator interactively and return the machine binding."""
     print("\n" + "=" * 50)
     print("DockMeow 许可证签发工具（交互模式）")
     print("=" * 50)
@@ -164,10 +180,11 @@ def _interactive() -> tuple[str, str, dict[str, str]]:
             break
         print("请输入 trial 或 perpetual")
     email = input("用户邮箱: ").strip()
-    print("\n请粘贴用户提供的机器指纹因子（格式：mb=xxx,cpu=yyy,mac=zzz）:")
-    factors_str = input("> ").strip()
-    factors = _parse_factors(factors_str)
-    return ltype, email, factors
+    print("\n请粘贴用户提供的设备 ID（DM-xxx-yyy-zzz）或旧版完整机器因子：")
+    binding = input("> ").strip()
+    if binding.upper().startswith("DM-"):
+        return ltype, email, None, binding
+    return ltype, email, _parse_factors(binding), None
 
 
 def main() -> None:
@@ -177,25 +194,33 @@ def main() -> None:
     )
     parser.add_argument("--type", choices=["trial", "perpetual"], dest="license_type")
     parser.add_argument("--email")
+    parser.add_argument("--machine-id", "--machine-code", dest="machine_id")
     parser.add_argument("--machine-factors", dest="machine_factors")
     parser.add_argument("--license-id", dest="license_id")
     parser.add_argument("--key", default=str(PRIVATE_KEY_PATH),
                         help="Path to private key PEM file")
     args = parser.parse_args()
 
-    if args.license_type and args.email and args.machine_factors:
+    if args.license_type and args.email and (args.machine_id or args.machine_factors):
         # Command-line mode
         ltype   = args.license_type
         email   = args.email
-        factors = _parse_factors(args.machine_factors)
+        machine_id = args.machine_id
+        factors = None
+        if args.machine_factors:
+            if args.machine_factors.strip().upper().startswith("DM-"):
+                machine_id = args.machine_factors
+            else:
+                factors = _parse_factors(args.machine_factors)
     else:
         # Interactive mode
-        ltype, email, factors = _interactive()
+        ltype, email, factors, machine_id = _interactive()
 
     out = issue(
         license_type=ltype,
         email=email,
         machine_factors=factors,
+        machine_id=machine_id,
         license_id=args.license_id if hasattr(args, "license_id") else None,
         private_key_path=Path(args.key),
     )

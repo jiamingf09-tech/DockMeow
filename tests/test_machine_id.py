@@ -14,7 +14,10 @@ from dockmeow.licensing.machine import (
     _hash16,
     get_machine_factors,
     get_machine_id,
+    machine_id_from_factors,
     match_machine,
+    match_machine_id,
+    normalize_machine_id,
 )
 
 _HEX16 = re.compile(r"^[0-9a-f]{16}$")
@@ -251,3 +254,31 @@ class TestMachineIdFull:
         ):
             mid = get_machine_id()
         assert mid == "DM-00000000-00000000-00000000"
+
+    def test_machine_id_from_factors_uses_visible_prefixes(self):
+        factors = {
+            "mb": "aaaaaaaa12345678",
+            "cpu": "bbbbbbbb12345678",
+            "mac": "cccccccc12345678",
+        }
+        assert machine_id_from_factors(factors) == "DM-aaaaaaaa-bbbbbbbb-cccccccc"
+
+    def test_machine_id_from_factors_uses_zero_for_missing_factor(self):
+        factors = {"cpu": "e345de8b11111111", "mac": "4ad5ebb922222222"}
+        assert machine_id_from_factors(factors) == "DM-00000000-e345de8b-4ad5ebb9"
+
+    def test_normalize_machine_id_accepts_mixed_case(self):
+        mid = normalize_machine_id(" dm-00000000-E345DE8B-4AD5EBB9 ")
+        assert mid == "DM-00000000-e345de8b-4ad5ebb9"
+
+    def test_normalize_machine_id_rejects_incomplete_id(self):
+        with pytest.raises(ValueError):
+            normalize_machine_id("DM-00000000-e345de8b")
+
+    def test_match_machine_id_uses_current_visible_id(self, monkeypatch):
+        monkeypatch.setattr(
+            "dockmeow.licensing.machine.get_machine_id",
+            lambda: "DM-00000000-e345de8b-4ad5ebb9",
+        )
+        assert match_machine_id("DM-00000000-E345DE8B-4AD5EBB9") is True
+        assert match_machine_id("DM-00000000-e345de8b-00000000") is False

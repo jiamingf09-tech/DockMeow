@@ -308,6 +308,9 @@ def test_viewer_box_rendering_uses_orange_fill_and_wireframe() -> None:
     assert "py3dmol-webgl" in _HTML
     assert "countsIndex" in _HTML
     assert "atomStart = countsIndex + 1" in _HTML
+    assert "function syncViewerSize()" in _HTML
+    assert "_v.camera.aspect = w / h" in _HTML
+    assert "function requestScreenshot()" in _HTML
 
 
 def test_webengine_flags_disable_renderer_accessibility(monkeypatch) -> None:

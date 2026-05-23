@@ -102,6 +102,31 @@ def test_e2e_issue_activate_verify(private_key_available, machine_factors, tmp_p
     assert result["type"] == "perpetual"
 
 
+def test_e2e_issue_with_visible_machine_id(private_key_available, tmp_path, monkeypatch):
+    """Full flow: issue from the single device ID shown in the app."""
+    import issue_license as il
+
+    machine_id = "DM-00000000-e345de8b-4ad5ebb9"
+    monkeypatch.setattr("dockmeow.licensing.machine.get_machine_id", lambda: machine_id)
+
+    out = il.issue(
+        license_type="perpetual",
+        email="single-code@test.com",
+        machine_id=machine_id,
+        private_key_path=_PRIVATE_KEY,
+    )
+    data = json.loads(out.read_text())
+    assert data["machine_id"] == machine_id
+    assert "machine" not in data
+
+    app_data = tmp_path / "app_data"
+    app_data.mkdir()
+    with patch("dockmeow.licensing.verifier.app_data_dir", return_value=app_data):
+        from dockmeow.licensing.verifier import activate
+        activate(out)
+    assert (app_data / "license.dmlic").exists()
+
+
 # ---------------------------------------------------------------------------
 # Step 5: tamper payload after signing → fail
 # ---------------------------------------------------------------------------

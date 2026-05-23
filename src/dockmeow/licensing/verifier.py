@@ -3,7 +3,9 @@
 Verification order (all must pass):
     1. JSON parse
     2. RSA-2048 PSS signature over ``json.dumps(payload, sort_keys=True)``
-    3. Machine fingerprint: stored factors must match current machine (≥2/3 rule)
+    3. Machine binding:
+       - New licenses: copyable ``machine_id`` must match exactly.
+       - Legacy licenses: stored factors must match current machine (≥2/3 rule).
     4. Expiry: ``expires_at`` must be None or > time.time()
 
 License file format (.dmlic) — UTF-8 JSON:
@@ -13,11 +15,12 @@ License file format (.dmlic) — UTF-8 JSON:
         "type":        "trial" | "perpetual",
         "issued_at":   1234567890.0, # UNIX timestamp
         "expires_at":  1234567890.0, # UNIX timestamp or null
+        "machine_id":  "DM-xxxxxxxx-yyyyyyyy-zzzzzzzz",
         "machine": {
             "mb":  "16hex",
             "cpu": "16hex",
             "mac": "16hex"
-        },
+        },                          # legacy / optional
         "signature":   "base64-url-encoded PSS signature"
     }
 """
@@ -112,7 +115,7 @@ class LicenseVerifier:
             ) from exc
 
     def verify_machine(self, data: dict) -> bool:
-        """Check machine binding (≥ 2/3 factors must match).
+        """Check machine binding.
 
         Args:
             data: Full license dict.
@@ -123,10 +126,16 @@ class LicenseVerifier:
         Raises:
             LicenseError: if machine does not match.
         """
-        from dockmeow.licensing.machine import match_machine
+        from dockmeow.licensing.machine import match_machine, match_machine_id
 
-        stored = data.get("machine", {})
-        if not match_machine(stored):
+        stored_id = data.get("machine_id")
+        if stored_id:
+            matched = match_machine_id(str(stored_id))
+        else:
+            stored = data.get("machine", {})
+            matched = match_machine(stored)
+
+        if not matched:
             raise LicenseError(
                 "Machine fingerprint mismatch.",
                 "此许可证不适用于当前设备。",

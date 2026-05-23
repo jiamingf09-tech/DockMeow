@@ -46,6 +46,7 @@ def _sign(private_key, payload: dict) -> str:
 
 def _make_payload(
     factors: dict | None = None,
+    machine_id: str | None = None,
     expires_at: float | None = None,
     license_type: str = "perpetual",
 ) -> dict:
@@ -58,8 +59,11 @@ def _make_payload(
         "type":       license_type,
         "issued_at":  time.time(),
         "expires_at": expires_at,
-        "machine":    factors,
     }
+    if machine_id:
+        payload["machine_id"] = machine_id
+    else:
+        payload["machine"] = factors
     pk = _load_private_key()
     payload["signature"] = _sign(pk, payload)
     return payload
@@ -141,6 +145,29 @@ class TestLicenseVerifier:
         v = LicenseVerifier()
         result = v.load_and_verify(path)
         assert result is not None
+
+    def test_machine_id_license_passes(self, tmp_path, monkeypatch):
+        """New licenses can be bound to the single visible device ID."""
+        monkeypatch.setattr(
+            "dockmeow.licensing.machine.get_machine_id",
+            lambda: "DM-00000000-e345de8b-4ad5ebb9",
+        )
+        payload = _make_payload(machine_id="DM-00000000-E345DE8B-4AD5EBB9")
+        path = _write_dmlic(tmp_path, payload)
+        v = LicenseVerifier()
+        result = v.load_and_verify(path)
+        assert result["machine_id"] == "DM-00000000-E345DE8B-4AD5EBB9"
+
+    def test_machine_id_mismatch_raises(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            "dockmeow.licensing.machine.get_machine_id",
+            lambda: "DM-00000000-e345de8b-4ad5ebb9",
+        )
+        payload = _make_payload(machine_id="DM-00000000-e345de8b-00000000")
+        path = _write_dmlic(tmp_path, payload)
+        v = LicenseVerifier()
+        with pytest.raises(LicenseError, match="fingerprint"):
+            v.load_and_verify(path)
 
     def test_corrupted_json_raises(self, tmp_path):
         path = tmp_path / "bad.dmlic"

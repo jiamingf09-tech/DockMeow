@@ -46,6 +46,7 @@ def inspect_license(dmlic_path: Path) -> None:
     print(f"  Email      : {data.get('email', '?')}")
     print(f"  Issued     : {iss_str}")
     print(f"  Expires    : {exp_str}")
+    print(f"  Machine ID : {data.get('machine_id', '(legacy factors)')}")
     mf = data.get("machine", {})
     print(f"  Machine    : mb={mf.get('mb','?')} cpu={mf.get('cpu','?')} mac={mf.get('mac','?')}")
     print("-" * 50)

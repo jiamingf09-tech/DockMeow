@@ -84,7 +84,8 @@ PYTHONPATH=src .venv/bin/python tools/get_machine_id.py
     mac=a3e827c63db90fb1
 ```
 
-记下 `mb=`, `cpu=`, `mac=` 三个值，用于步骤 3。
+日常签发只需要记下 `指纹 ID` 这一串 `DM-...` 设备码，用于步骤 3。
+旧版三因子 `mb=`, `cpu=`, `mac=` 仍可用于兼容排查。
 
 ---
 
@@ -99,7 +100,7 @@ PYTHONPATH=src .venv/bin/python tools/quick_issue.py
 按提示输入：
 1. 许可证类型：`perpetual` 或 `trial`
 2. 用户邮箱
-3. 机器指纹因子（粘贴步骤 2 的 `mb=xxx,cpu=yyy,mac=zzz`）
+3. 设备 ID（粘贴步骤 2 的 `DM-xxxxxxxx-yyyyyyyy-zzzzzzzz`）
 4. 备注（可选，如订单号）
 
 ### 方式 B — 命令行（批量/脚本化）
@@ -108,9 +109,11 @@ PYTHONPATH=src .venv/bin/python tools/quick_issue.py
 PYTHONPATH=src .venv/bin/python tools/quick_issue.py \
     --type perpetual \
     --email user@example.com \
-    --machine-factors "mb=853caa58ae67e9fe,cpu=9fd8639cece7f8a5,mac=a3e827c63db90fb1" \
+    --machine-id "DM-853caa58-9fd8639c-a3e827c6" \
     --note "Stripe inv_xxx / 自测"
 ```
+
+旧版完整因子仍可使用 `--machine-factors "mb=...,cpu=...,mac=..."`。
 
 ### 方式 C — 原始签发工具（无 DB 记录）
 
@@ -118,7 +121,7 @@ PYTHONPATH=src .venv/bin/python tools/quick_issue.py \
 PYTHONPATH=src .venv/bin/python tools/issue_license.py \
     --type perpetual \
     --email user@example.com \
-    --machine-factors "mb=853caa58ae67e9fe,cpu=9fd8639cece7f8a5,mac=a3e827c63db90fb1"
+    --machine-id "DM-853caa58-9fd8639c-a3e827c6"
 ```
 
 **预期输出**：
@@ -209,7 +212,7 @@ PYTHONPATH=src .venv/bin/python tools/quick_issue.py \
     --dry-run \
     --type trial \
     --email dryrun@test.com \
-    --machine-factors "mb=0000000000000000,cpu=1111111111111111,mac=2222222222222222"
+    --machine-id "DM-00000000-11111111-22222222"
 ```
 
 ---
