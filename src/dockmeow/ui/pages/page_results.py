@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -50,10 +51,16 @@ class ResultsPage(QWidget):
         root.setContentsMargins(12, 12, 12, 12)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
         root.addWidget(splitter)
 
         # ---- left: viewer + Ray toolbar
         self._viewer_host = QWidget()
+        self._viewer_host.setMinimumWidth(520)
+        self._viewer_host.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         self._viewer_layout = QVBoxLayout(self._viewer_host)
         self._viewer_layout.setContentsMargins(0, 0, 0, 0)
         self._viewer_layout.setSpacing(4)
@@ -84,6 +91,11 @@ class ResultsPage(QWidget):
 
         # ---- right: table + buttons
         right = QWidget()
+        right.setMinimumWidth(360)
+        right.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         rl = QVBoxLayout(right)
 
         self._table = QTableWidget(0, 4)
@@ -113,8 +125,10 @@ class ResultsPage(QWidget):
         rl.addLayout(btns)
 
         splitter.addWidget(right)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([720, 430])
+        self._splitter = splitter
 
     # ------------------------------------------------------------------
     def _ensure_viewer(self) -> Viewer3D:
