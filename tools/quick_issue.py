@@ -13,14 +13,20 @@ Usage (CLI — non-interactive, scriptable):
     python tools/quick_issue.py \\
         --type perpetual \\
         --email user@example.com \\
-        --machine-factors "mb=853caa58ae67e9fe,cpu=9fd8639cece7f8a5,mac=a3e827c63db90fb1" \\
+        --machine-id "DM-853caa58-9fd8639c-a3e827c6" \\
         [--note "Paid via Stripe inv_xxx"]
+
+Legacy full-factor mode is still accepted:
+    python tools/quick_issue.py \\
+        --type perpetual \\
+        --email user@example.com \\
+        --machine-factors "mb=853caa58ae67e9fe,cpu=9fd8639cece7f8a5,mac=a3e827c63db90fb1"
 
 Dry-run (no file written, no DB entry, no clipboard):
     python tools/quick_issue.py --dry-run \\
         --type trial \\
         --email test@example.com \\
-        --machine-factors "mb=0000000000000000,cpu=1111111111111111,mac=2222222222222222"
+        --machine-id "DM-00000000-11111111-22222222"
 """
 from __future__ import annotations
 
@@ -35,6 +41,9 @@ from pathlib import Path
 _REPO_ROOT  = Path(__file__).parent.parent
 _DB_PATH    = _REPO_ROOT / "customers.db"
 _ISSUED_DIR = _REPO_ROOT / "issued"
+_SRC_PATH   = _REPO_ROOT / "src"
+if _SRC_PATH.exists():
+    sys.path.insert(0, str(_SRC_PATH))
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
@@ -49,6 +58,7 @@ def _db_connect() -> sqlite3.Connection:
             license_id    TEXT    NOT NULL,
             license_type  TEXT    NOT NULL,
             email         TEXT    NOT NULL,
+            machine_id    TEXT,
             mb            TEXT,
             cpu           TEXT,
             mac           TEXT,
@@ -57,6 +67,9 @@ def _db_connect() -> sqlite3.Connection:
             note          TEXT
         )
     """)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(customers)")}
+    if "machine_id" not in cols:
+        conn.execute("ALTER TABLE customers ADD COLUMN machine_id TEXT")
     conn.commit()
     return conn
 
@@ -72,8 +85,8 @@ def _db_record(conn: sqlite3.Connection, data: dict, dmlic_path: Path, note: str
         """
         INSERT OR REPLACE INTO customers
             (recorded_at, license_no, license_id, license_type, email,
-             mb, cpu, mac, expires_at, dmlic_path, note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             machine_id, mb, cpu, mac, expires_at, dmlic_path, note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -81,6 +94,7 @@ def _db_record(conn: sqlite3.Connection, data: dict, dmlic_path: Path, note: str
             data["license_id"],
             data["type"],
             data["email"],
+            data.get("machine_id"),
             machine.get("mb"),
             machine.get("cpu"),
             machine.get("mac"),
@@ -123,8 +137,16 @@ def _parse_factors(s: str) -> dict[str, str]:
     return result
 
 
-def _interactive() -> tuple[str, str, dict[str, str], str]:
-    """Return (license_type, email, factors, note)."""
+def _parse_binding(value: str) -> tuple[dict[str, str] | None, str | None]:
+    raw = (value or "").strip()
+    if raw.upper().startswith("DM-"):
+        from dockmeow.licensing.machine import normalize_machine_id
+        return None, normalize_machine_id(raw)
+    return _parse_factors(raw), None
+
+
+def _interactive() -> tuple[str, str, dict[str, str] | None, str | None, str]:
+    """Return (license_type, email, factors, machine_id, note)."""
     print()
     print("=" * 52)
     print("  DockMeow 快速签发工具")
@@ -137,18 +159,19 @@ def _interactive() -> tuple[str, str, dict[str, str], str]:
         print("  !! 请输入 trial 或 perpetual")
 
     email = input("  用户邮箱: ").strip()
-    print("  请粘贴用户提供的机器指纹因子")
-    print("  （格式：mb=xxx,cpu=yyy,mac=zzz）:")
-    factors_str = input("  > ").strip()
-    factors = _parse_factors(factors_str)
+    print("  请粘贴用户提供的设备 ID（推荐，格式：DM-xxx-yyy-zzz）")
+    print("  或旧版完整机器因子（格式：mb=xxx,cpu=yyy,mac=zzz）:")
+    binding_str = input("  > ").strip()
+    factors, machine_id = _parse_binding(binding_str)
     note = input("  备注（可留空，如订单号）: ").strip()
-    return ltype, email, factors, note
+    return ltype, email, factors, machine_id, note
 
 
 def run(
     license_type: str,
     email: str,
-    machine_factors: dict[str, str],
+    machine_factors: dict[str, str] | None = None,
+    machine_id: str | None = None,
     note: str = "",
     dry_run: bool = False,
 ) -> Path | None:
@@ -156,10 +179,17 @@ def run(
 
     Returns the .dmlic Path, or None on dry-run.
     """
-    # ── Validate factors ──
-    missing = [k for k in ("mb", "cpu", "mac") if k not in machine_factors]
-    if missing:
-        print(f"❌ 缺少机器因子: {', '.join(missing)}", file=sys.stderr)
+    # ── Validate binding ──
+    if machine_id:
+        from dockmeow.licensing.machine import normalize_machine_id
+        machine_id = normalize_machine_id(machine_id)
+    elif machine_factors:
+        missing = [k for k in ("mb", "cpu", "mac") if k not in machine_factors]
+        if missing:
+            print(f"❌ 缺少机器因子: {', '.join(missing)}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print("❌ 缺少设备 ID 或机器因子", file=sys.stderr)
         sys.exit(1)
 
     if dry_run:
@@ -171,9 +201,13 @@ def run(
         print("╚══════════════════════════════════════════════════╝")
         print(f"  类型:   {license_type}")
         print(f"  邮箱:   {email}")
-        print(f"  mb:     {machine_factors.get('mb')}")
-        print(f"  cpu:    {machine_factors.get('cpu')}")
-        print(f"  mac:    {machine_factors.get('mac')}")
+        if machine_id:
+            print(f"  设备ID: {machine_id}")
+        else:
+            machine_factors = machine_factors or {}
+            print(f"  mb:     {machine_factors.get('mb')}")
+            print(f"  cpu:    {machine_factors.get('cpu')}")
+            print(f"  mac:    {machine_factors.get('mac')}")
         print(f"  备注:   {note or '（无）'}")
         print(f"  时间:   {now}")
         print()
@@ -191,6 +225,7 @@ def run(
         license_type=license_type,
         email=email,
         machine_factors=machine_factors,
+        machine_id=machine_id,
     )
     print(" 完成")
 
@@ -226,6 +261,7 @@ def run(
     print(f"│  编号   {data['license_no']:<43}│")
     print(f"│  类型   {'试用' if data['type'] == 'trial' else '永久':<43}│")
     print(f"│  邮箱   {email:<43}│")
+    print(f"│  设备   {str(data.get('machine_id') or '旧版因子绑定'):<43}│")
     print(f"│  过期   {exp_str:<43}│")
     print(f"│  文件   {str(dmlic_path.name):<43}│")
     print("├─────────────────────────────────────────────────────┤")
@@ -249,32 +285,32 @@ def main() -> None:
     parser.add_argument("--type", choices=["trial", "perpetual"], dest="license_type",
                         help="许可证类型")
     parser.add_argument("--email", help="用户邮箱")
+    parser.add_argument("--machine-id", "--machine-code", dest="machine_id",
+                        help="设备 ID，格式: DM-xxxxxxxx-yyyyyyyy-zzzzzzzz")
     parser.add_argument("--machine-factors", dest="machine_factors",
-                        help="机器指纹，格式: mb=xxx,cpu=yyy,mac=zzz")
+                        help="旧版机器指纹，格式: mb=xxx,cpu=yyy,mac=zzz")
     parser.add_argument("--note", default="", help="备注（如订单号、渠道）")
     parser.add_argument("--dry-run", action="store_true",
                         help="演习模式：验证参数但不写文件")
     args = parser.parse_args()
 
-    if args.license_type and args.email and args.machine_factors:
+    if args.license_type and args.email and (args.machine_id or args.machine_factors):
         # CLI mode
         ltype   = args.license_type
         email   = args.email
-        factors = _parse_factors(args.machine_factors)
+        factors = None
+        machine_id = args.machine_id
+        if args.machine_factors:
+            factors, parsed_id = _parse_binding(args.machine_factors)
+            machine_id = machine_id or parsed_id
         note    = args.note
         dry     = args.dry_run
-    elif args.dry_run and args.license_type and args.email and args.machine_factors:
-        ltype   = args.license_type
-        email   = args.email
-        factors = _parse_factors(args.machine_factors)
-        note    = args.note
-        dry     = True
     else:
         # Interactive mode (dry-run flag still respected)
-        ltype, email, factors, note = _interactive()
+        ltype, email, factors, machine_id, note = _interactive()
         dry = args.dry_run
 
-    run(ltype, email, factors, note=note, dry_run=dry)
+    run(ltype, email, factors, machine_id=machine_id, note=note, dry_run=dry)
 
 
 if __name__ == "__main__":

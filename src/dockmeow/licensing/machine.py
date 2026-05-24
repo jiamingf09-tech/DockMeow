@@ -156,11 +156,40 @@ def get_machine_id() -> str:
 
     Format: ``DM-<mb[:8]>-<cpu[:8]>-<mac[:8]>``
     """
-    f = get_machine_factors()
-    mb  = (f.get("mb")  or "00000000")[:8]
-    cpu = (f.get("cpu") or "00000000")[:8]
-    mac = (f.get("mac") or "00000000")[:8]
+    return machine_id_from_factors(get_machine_factors())
+
+
+def machine_id_from_factors(factors: dict[str, str]) -> str:
+    """Build the user-facing device ID from full machine factors."""
+    f = factors or {}
+    mb  = (f.get("mb")  or "00000000")[:8].lower()
+    cpu = (f.get("cpu") or "00000000")[:8].lower()
+    mac = (f.get("mac") or "00000000")[:8].lower()
     return f"DM-{mb}-{cpu}-{mac}"
+
+
+def normalize_machine_id(machine_id: str) -> str:
+    """Normalize and validate the copyable ``DM-xxxxxxxx-yyyyyyyy-zzzzzzzz`` ID."""
+    value = (machine_id or "").strip()
+    match = re.fullmatch(
+        r"DM-([0-9A-Fa-f]{8})-([0-9A-Fa-f]{8})-([0-9A-Fa-f]{8})",
+        value,
+        re.IGNORECASE,
+    )
+    if not match:
+        raise ValueError(
+            "machine_id must look like DM-xxxxxxxx-yyyyyyyy-zzzzzzzz"
+        )
+    return "DM-" + "-".join(part.lower() for part in match.groups())
+
+
+def match_machine_id(stored_machine_id: str) -> bool:
+    """Check whether a stored user-facing device ID matches this machine."""
+    try:
+        stored = normalize_machine_id(stored_machine_id)
+    except ValueError:
+        return False
+    return stored == normalize_machine_id(get_machine_id())
 
 
 def match_machine(stored_factors: dict[str, str]) -> bool:

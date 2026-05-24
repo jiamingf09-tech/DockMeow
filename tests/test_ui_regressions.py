@@ -283,6 +283,26 @@ def test_pocket_candidate_column_has_room_to_read(qapp, monkeypatch) -> None:
     assert page._cards[0].sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
 
 
+def test_results_viewer_starts_wide_enough_for_3d_preview(qapp, monkeypatch) -> None:
+    _patch_viewers(monkeypatch)
+
+    from PySide6.QtWidgets import QSizePolicy
+
+    from dockmeow.ui.pages.page_results import ResultsPage
+
+    page = ResultsPage()
+    page.resize(1200, 800)
+    page.show()
+    qapp.processEvents()
+    viewer_panel = page._splitter.widget(0)
+    table_panel = page._splitter.widget(1)
+
+    assert viewer_panel.minimumWidth() >= 520
+    assert table_panel.minimumWidth() >= 360
+    assert viewer_panel.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+    assert page._splitter.sizes()[0] > page._splitter.sizes()[1]
+
+
 def test_main_window_does_not_create_webengine_viewers_on_startup(qapp, monkeypatch) -> None:
     _patch_viewers(monkeypatch)
 
@@ -308,6 +328,11 @@ def test_viewer_box_rendering_uses_orange_fill_and_wireframe() -> None:
     assert "py3dmol-webgl" in _HTML
     assert "countsIndex" in _HTML
     assert "atomStart = countsIndex + 1" in _HTML
+    assert "function syncViewerSize()" in _HTML
+    assert "_v.WIDTH = w; _v.HEIGHT = h;" in _HTML
+    assert "_v.camera.aspect = _v.ASPECT" in _HTML
+    assert "canvas.width = cw; canvas.height = ch;" in _HTML
+    assert "function requestScreenshot()" in _HTML
 
 
 def test_webengine_flags_disable_renderer_accessibility(monkeypatch) -> None:
