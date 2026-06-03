@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="examples/DockMeow.png" alt="DockMeow Logo" width="160"/>
+<img src="logo.png" alt="DockMeow Logo" width="160"/>
 
 # DockMeow &nbsp;·&nbsp; 一键对接
 
