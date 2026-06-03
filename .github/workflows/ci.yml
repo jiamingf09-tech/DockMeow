@@ -74,10 +74,10 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Lint
-        run: python -m ruff check src/ tests/
+        run: python -m ruff check src/
 
       - name: Run tests
-        run: python -m pytest tests/ --tb=short --cov=dockmeow --cov-report=term-missing
+        run: python -m pytest --tb=short --cov=dockmeow --cov-report=term-missing
 
       # ── fpocket smoke test (Linux + macOS only; no Windows binary) ────────
       - name: fpocket smoke test
@@ -97,10 +97,17 @@ jobs:
               print(f"SKIP: fpocket binary not found at {binary}")
               sys.exit(0)
 
-          pdb = Path("examples/1AKE_with_ATP.pdb")
+          # Use a minimal synthetic PDB so the test has no dependency on
+          # the examples/ directory (removed in open-source cleanup).
+          _minimal_pdb = (
+              "ATOM      1  CA  ALA A   1       1.000   1.000   1.000  1.00  0.00           C\n"
+              "ATOM      2  CA  ALA A   2       2.000   2.000   2.000  1.00  0.00           C\n"
+              "ATOM      3  CA  ALA A   3       3.000   3.000   3.000  1.00  0.00           C\n"
+              "END\n"
+          )
           with tempfile.TemporaryDirectory() as tmpdir:
-              local_pdb = Path(tmpdir) / pdb.name
-              shutil.copy2(pdb, local_pdb)
+              local_pdb = Path(tmpdir) / "smoke.pdb"
+              local_pdb.write_text(_minimal_pdb)
               try:
                   result = subprocess.run(
                       [str(binary), "-f", str(local_pdb)],

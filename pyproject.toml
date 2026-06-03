@@ -59,7 +59,6 @@ where = ["src"]
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
 addopts = "--tb=short -m 'not slow'"
 markers = [
     "slow: end-to-end tests that run the full docking pipeline (deselected by default)",

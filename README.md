@@ -80,43 +80,11 @@ The wizard guides you through six steps:
 ### Development
 
 ```bash
-# Lint
-python -m ruff check src/ tests/
-
-# Test (fast, excludes slow e2e)
-python -m pytest tests/ -q
-
-# Test (including slow pipeline tests)
-python -m pytest tests/ -m slow -q
-
 # Build macOS DMG
 ./packaging/macos/build_dmg.sh
 
 # Build Windows installer (run from CMD on Windows)
 packaging\windows\build_win.bat
-```
-
-### CI / CD
-
-| Workflow | Trigger | What it does |
-|---|---|---|
-| **CI** | push / PR | Lint + test on macOS arm64, Windows x64, Ubuntu |
-| **Build & Release** | tag `v*` | PyInstaller → DMG / Inno Setup EXE / AppImage → GitHub Release |
-
-### Project structure
-
-```
-src/dockmeow/
-├── core/          # receptor.py, ligand.py, pocket.py, docking.py, report.py
-├── ui/
-│   ├── pages/     # ReceptorPage, LigandPage, PocketPage, ParamsPage, RunPage, ResultsPage
-│   ├── widgets/   # Viewer3D (py3Dmol + QWebEngineView)
-│   └── dialogs/   # AboutDialog, CustomBoxDialog
-└── utils/         # paths.py, config.py, subprocess.py
-packaging/
-├── dockmeow.spec  # PyInstaller spec (shared macOS + Windows)
-├── macos/         # build_dmg.sh, entitlements.plist
-└── windows/       # build_win.bat, installer.iss, requirements-build-win.txt
 ```
 
 ### Contributing
@@ -189,9 +157,6 @@ python -m dockmeow
 ### 开发
 
 ```bash
-python -m ruff check src/ tests/   # 代码检查
-python -m pytest tests/ -q         # 快速测试
-python -m pytest tests/ -m slow -q # 含完整流程测试
 ./packaging/macos/build_dmg.sh     # 构建 macOS DMG
 packaging\windows\build_win.bat    # 构建 Windows 安装包（在 Windows CMD 中运行）
 ```
