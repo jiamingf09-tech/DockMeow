@@ -167,5 +167,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/installers/*
-          prerelease: true
+          prerelease: false
           generate_release_notes: true
