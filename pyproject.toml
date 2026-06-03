@@ -60,6 +60,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "--tb=short -m 'not slow'"
+norecursedirs = ["tools", "packaging", ".venv*", "dist", "build"]
 markers = [
     "slow: end-to-end tests that run the full docking pipeline (deselected by default)",
 ]
