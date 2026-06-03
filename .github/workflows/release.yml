@@ -70,11 +70,6 @@ jobs:
         shell: bash
         run: python -m pip install vina || echo "WARNING vina pip install failed, continuing without it"
 
-      # ── Inject build metadata ─────────────────────────────────────────────
-      - name: Inject build metadata
-        run: python tools/inject_build_info.py
-        continue-on-error: true
-
       # ── PyInstaller ───────────────────────────────────────────────────────
       - name: Build with PyInstaller
         env:

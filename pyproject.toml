@@ -6,9 +6,27 @@ build-backend = "setuptools.build_meta"
 name = "dockmeow"
 version = "0.1.1"
 description = "DockMeow / 一键对接 — GUI-based molecular docking for researchers"
+readme = "README.md"
 requires-python = ">=3.11,<3.12"
 license = { file = "LICENSE" }
+license-files = ["LICENSE"]
 authors = [{ name = "DockMeow Team" }]
+keywords = ["molecular docking", "cheminformatics", "drug discovery", "AutoDock Vina", "GUI"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Environment :: X11 Applications :: Qt",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+]
+
+[project.urls]
+Homepage = "https://github.com/jiamingf09-tech/DockMeow"
+Repository = "https://github.com/jiamingf09-tech/DockMeow"
+Issues = "https://github.com/jiamingf09-tech/DockMeow/issues"
+Releases = "https://github.com/jiamingf09-tech/DockMeow/releases"
 
 dependencies = [
     "PySide6>=6.11,<6.12",
