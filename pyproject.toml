@@ -20,13 +20,6 @@ classifiers = [
     "Operating System :: MacOS",
     "Operating System :: Microsoft :: Windows",
 ]
-
-[project.urls]
-Homepage = "https://github.com/jiamingf09-tech/DockMeow"
-Repository = "https://github.com/jiamingf09-tech/DockMeow"
-Issues = "https://github.com/jiamingf09-tech/DockMeow/issues"
-Releases = "https://github.com/jiamingf09-tech/DockMeow/releases"
-
 dependencies = [
     "PySide6>=6.11,<6.12",
     "vina>=1.2.5",          # conda-forge only; pip sdist requires Boost C++ headers
@@ -42,6 +35,12 @@ dependencies = [
     "cryptography>=42.0",
     "reportlab>=4.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jiamingf09-tech/DockMeow"
+Repository = "https://github.com/jiamingf09-tech/DockMeow"
+Issues = "https://github.com/jiamingf09-tech/DockMeow/issues"
+Releases = "https://github.com/jiamingf09-tech/DockMeow/releases"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-qt>=4.4", "ruff", "mypy", "pytest-cov"]
