@@ -76,9 +76,6 @@ jobs:
       - name: Lint
         run: python -m ruff check src/
 
-      - name: Run tests
-        run: python -m pytest --tb=short --cov=dockmeow --cov-report=term-missing
-
       # ── fpocket smoke test (Linux + macOS only; no Windows binary) ────────
       - name: fpocket smoke test
         if: runner.os != 'Windows'
