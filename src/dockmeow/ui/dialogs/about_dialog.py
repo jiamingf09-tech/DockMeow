@@ -19,7 +19,7 @@ from dockmeow.version import __version__
 class AboutDialog(QDialog):
     """Displays app metadata and acknowledgements."""
 
-    def __init__(self, license_data: dict | None = None, parent=None) -> None:
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle(t("about.title"))
         self.setMinimumWidth(420)
@@ -48,13 +48,6 @@ class AboutDialog(QDialog):
 
         layout.addWidget(QLabel(t("about.tagline")))
         layout.addWidget(QLabel(t("about.version", ver=__version__)))
-
-        if license_data:
-            layout.addWidget(
-                QLabel(t("status.activated", email=str(license_data.get("email", ""))))
-            )
-        else:
-            layout.addWidget(QLabel(t("status.not_activated")))
 
         credits = QLabel(t("about.credits"))
         credits.setWordWrap(True)

@@ -23,7 +23,6 @@ _STRINGS: dict[str, str] = {
 
     # --- Welcome page ---
     "welcome.title": "欢迎使用一键对接",
-    "welcome.activate_btn": "激活许可证",
     "welcome.learn_more_btn": "了解更多",
 
     # --- Receptor page ---
@@ -65,17 +64,11 @@ _STRINGS: dict[str, str] = {
     "results.ray_saved": "截图已保存：{path}",
     "results.ray_failed": "截图失败：{err}",
 
-    # --- Status bar ---
-    "status.activated": "已激活：{email}",
-    "status.trial": "试用版剩余 {hours} 小时 {minutes} 分",
-    "status.not_activated": "未激活",
-
     # --- App / menu ---
     "app.title": "DockMeow 一键对接",
     "menu.file": "文件",
     "menu.help": "帮助",
     "menu.about": "关于",
-    "menu.activate": "激活许可证…",
     "menu.exit": "退出",
 
     # --- Receptor page extra ---
@@ -114,25 +107,7 @@ _STRINGS: dict[str, str] = {
     "results.title": "结果",
     "results.no_pose": "暂无构象",
 
-    # --- Activation dialog ---
-    "activation.title": "激活许可证",
-    "activation.machine_id_label": "设备 ID：",
-    "activation.copy_machine_id_btn": "复制 ID",
-    "activation.machine_id_unavailable": "读取失败",
-    "activation.drop_hint": "拖入 .dmlic 许可证文件",
-    "activation.browse_btn": "浏览…",
-    "activation.success": "激活成功！",
-    "activation.license_no": "证书编号：{no}",
-    "activation.email": "邮箱：{email}",
-    "activation.type": "类型：{type}",
-
-    # --- Expired / mismatch dialogs ---
-    "expired.title": "许可证已过期",
-    "expired.message": "您的许可证已到期，请联系客服续费。",
-    "mismatch.title": "设备不匹配",
-    "mismatch.message": "此许可证不适用于当前设备。",
-    "mismatch.machine_id": "本机标识：{mid}",
-    "common.contact": "联系客服",
+    # --- Common dialogs ---
     "common.close": "关闭",
     "common.cancel": "取消",
     "common.ok": "确定",

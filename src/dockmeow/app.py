@@ -162,24 +162,6 @@ def create_app() -> QApplication:
     return app
 
 
-def _check_license() -> dict | None:
-    """Best-effort license check; returns the payload or None."""
-    from dockmeow.core.exceptions import LicenseError
-    from dockmeow.licensing.time_guard import check_clock_integrity
-    from dockmeow.licensing.verifier import LicenseVerifier
-
-    try:
-        check_clock_integrity()
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        return LicenseVerifier().load_and_verify()
-    except LicenseError:
-        return None
-    except Exception:  # noqa: BLE001
-        return None
-
-
 def _run_e2e_smoke(app: QApplication) -> int:
     """Run a hidden packaged-app smoke test when requested by environment."""
     import json as _json
@@ -448,7 +430,7 @@ def _run_e2e_smoke(app: QApplication) -> int:
 
 
 def run() -> int:
-    """Full application lifecycle: create → license-check → main window → exec."""
+    """Full application lifecycle: create → main window → exec."""
     _configure_webengine_flags()
     setup_logging()
     _install_excepthook()
@@ -469,12 +451,9 @@ def run() -> int:
     if os.environ.get("DOCKMEOW_SMOKE_E2E"):
         return _run_e2e_smoke(app)
 
-    license_data = _check_license()
-    _log.info("DockMeow startup: license check finished")
-
     from dockmeow.ui.main_window import MainWindow
 
-    window = MainWindow(license_data)
+    window = MainWindow()
     window.show()
     _log.info("DockMeow startup: main window shown")
     return app.exec()

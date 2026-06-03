@@ -1,12 +1,11 @@
 """PDF report generation using ReportLab.
 
 Report structure:
-    1. Cover page  — project name, timestamp, software version, license ID
+    1. Cover page  — project name, timestamp, software version
     2. Summary     — receptor / ligand / pocket metadata, score table
     3. 3D views    — up to 3 pose screenshots (PNG paths supplied by GUI layer)
     4. Parameters  — full DockingConfig dump
     5. Disclaimer  — standard scientific disclaimer
-    (trial licenses: "TRIAL VERSION" watermark on every page)
 
 No PySide6 imports permitted in this module.
 """
@@ -81,9 +80,7 @@ class ReportData:
     pocket: Pocket
     result: DockingResult
     user_email: str
-    license_id: str
     timestamp: str          # ISO-8601 string, pre-formatted by caller
-    watermark: bool = False  # True for trial licenses
     os_warning: str = ""    # Non-empty on Windows when fpocket is absent
 
 
@@ -165,16 +162,8 @@ def generate_pdf_report(
         textColor=colors.HexColor("#B22222"),
     )
 
-    # ---- Watermark callback ----
+    # ---- Page callback ----
     def _on_page(canvas: Canvas, doc) -> None:
-        if data.watermark:
-            canvas.saveState()
-            canvas.setFont(_FB, 48)
-            canvas.setFillColorRGB(0.85, 0.85, 0.85, alpha=0.4)
-            canvas.translate(W / 2, H / 2)
-            canvas.rotate(45)
-            canvas.drawCentredString(0, 0, "TRIAL VERSION")
-            canvas.restoreState()
         # Footer
         canvas.saveState()
         canvas.setFont(_F, 7)
@@ -207,7 +196,6 @@ def generate_pdf_report(
         ["项目名称", data.project_name],
         ["生成时间", data.timestamp],
         ["软件版本", f"DockMeow v{__version__}"],
-        ["许可证 ID", data.license_id],
         ["用户", data.user_email],
     ]
     cover_table = Table(cover_data, colWidths=[4 * cm, 12 * cm])
@@ -444,8 +432,6 @@ def generate_report(
     screenshot_path: Path | None = None,
     project_name: str = "DockMeow Project",
     user_email: str = "",
-    license_id: str = "",
-    watermark: bool = False,
 ) -> Path:
     """Simplified entry point used by the GUI export button and capture script.
 
@@ -470,18 +456,6 @@ def generate_report(
             size=(20.0, 20.0, 20.0), score=0.0, source="unknown",
         )
 
-    # Try to get user info from installed license
-    if not user_email or not license_id:
-        try:
-            from dockmeow.licensing.verifier import LicenseVerifier
-            lic = LicenseVerifier().load_and_verify()
-            if lic:
-                user_email = user_email or lic.get("email", "")
-                license_id = license_id or lic.get("license_no", "")
-                watermark = watermark or lic.get("license_type") == "trial"
-        except Exception:
-            pass
-
     _os_warning = _windows_fpocket_notice(pocket)
 
     data = ReportData(
@@ -491,9 +465,7 @@ def generate_report(
         pocket=pocket,
         result=result,
         user_email=user_email,
-        license_id=license_id,
         timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        watermark=watermark,
         os_warning=_os_warning,
     )
 

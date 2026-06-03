@@ -122,7 +122,7 @@ def test_ligand_ready_does_not_auto_navigate(qapp, tmp_path, monkeypatch) -> Non
 
     clean_pdb = tmp_path / "1SVC_clean.pdb"
     clean_pdb.write_text("clean", encoding="utf-8")
-    win = MainWindow(None)
+    win = MainWindow()
     receptor_info = SimpleNamespace(pdb_path=clean_pdb, pdbqt_path=tmp_path / "r.pdbqt")
     ligand_info = SimpleNamespace(pdbqt_path=tmp_path / "l.pdbqt")
 
@@ -145,7 +145,7 @@ def test_step_change_suspends_3d_viewer_before_hiding_page(qapp, tmp_path, monke
 
     clean_pdb = tmp_path / "1SVC_clean.pdb"
     clean_pdb.write_text("clean", encoding="utf-8")
-    win = MainWindow(None)
+    win = MainWindow()
     info = SimpleNamespace(
         pdb_path=clean_pdb,
         pdbqt_path=tmp_path / "r.pdbqt",
@@ -308,7 +308,7 @@ def test_main_window_does_not_create_webengine_viewers_on_startup(qapp, monkeypa
 
     from dockmeow.ui.main_window import MainWindow
 
-    win = MainWindow(None)
+    win = MainWindow()
 
     assert win._receptor_page._viewer is None
     assert win._pocket_page._viewer is None
@@ -439,30 +439,3 @@ def test_pyside_version_avoids_qtwebengine_accessibility_crash() -> None:
 
     version = tuple(int(part) for part in PySide6.__version__.split(".")[:2])
     assert version >= (6, 11)
-
-
-def test_activation_dialog_shows_same_machine_id_source(qapp, monkeypatch) -> None:
-    import dockmeow.ui.dialogs.activation_dialog as activation_dialog
-
-    monkeypatch.setattr(
-        activation_dialog, "get_machine_id", lambda: "DM-12345678-90ABCDEF-11223344"
-    )
-
-    dlg = activation_dialog.ActivationDialog()
-
-    assert dlg._machine_id_value.text() == "DM-12345678-90ABCDEF-11223344"
-    assert dlg._copy_machine_id_btn.isEnabled()
-
-
-def test_activation_dialog_copy_button_copies_machine_id(qapp, monkeypatch) -> None:
-    import dockmeow.ui.dialogs.activation_dialog as activation_dialog
-
-    machine_id = "DM-AAAABBBB-CCCCDDDD-EEEEFFFF"
-    monkeypatch.setattr(activation_dialog, "get_machine_id", lambda: machine_id)
-
-    dlg = activation_dialog.ActivationDialog()
-    qapp.clipboard().clear()
-
-    dlg._copy_machine_id_btn.click()
-
-    assert qapp.clipboard().text() == machine_id

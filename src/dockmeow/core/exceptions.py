@@ -32,9 +32,3 @@ class DockingExecutionError(DockMeowError):
     """Raised when AutoDock Vina docking fails or is interrupted."""
 
 
-class LicenseError(DockMeowError):
-    """Raised for any licensing validation failure (signature, machine, expiry)."""
-
-
-class TimeAnomalyError(DockMeowError):
-    """Raised when a system clock rollback is detected."""

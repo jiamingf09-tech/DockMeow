@@ -42,9 +42,7 @@ def report_data(prepared_receptor, prepared_ligand):
         pocket=pocket,
         result=mock_result,
         user_email="test@dockmeow.local",
-        license_id="TEST-0001",
         timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        watermark=False,
     )
 
 
@@ -64,14 +62,6 @@ class TestGeneratePdfReport:
         out = tmp_path / "report.pdf"
         generate_pdf_report(report_data, out, pose_screenshots=[])
         assert out.stat().st_size > 5_000  # reasonable minimum size
-
-    def test_watermark_version_produces_pdf(self, tmp_path, report_data):
-        import dataclasses
-        trial_data = dataclasses.replace(report_data, watermark=True)
-        out = tmp_path / "trial_report.pdf"
-        generate_pdf_report(trial_data, out, pose_screenshots=[])
-        assert out.exists()
-        assert out.read_bytes()[:4] == b"%PDF"
 
     def test_missing_screenshots_handled(self, tmp_path, report_data):
         """Non-existent screenshot paths are silently skipped."""
@@ -147,7 +137,6 @@ class TestGenerateReport:
             result,
             tmp_path / "report.pdf",
             user_email="test@dockmeow.local",
-            license_id="TEST-0001",
         )
 
         assert captured["data"].pocket.source == "fpocket"
@@ -168,7 +157,6 @@ class TestGenerateReport:
             result,
             tmp_path / "report.pdf",
             user_email="test@dockmeow.local",
-            license_id="TEST-0001",
         )
 
         assert captured["data"].os_warning == ""
@@ -187,7 +175,6 @@ class TestGenerateReport:
             result,
             tmp_path / "report.pdf",
             user_email="test@dockmeow.local",
-            license_id="TEST-0001",
         )
 
         warning = captured["data"].os_warning
