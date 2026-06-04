@@ -9,7 +9,7 @@
 [![CI](https://github.com/jiamingf09-tech/DockMeow/actions/workflows/ci.yml/badge.svg)](https://github.com/jiamingf09-tech/DockMeow/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey.svg)](#installation)
+![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-gray)
 
 [English](#english) &nbsp;|&nbsp; [中文](#中文)
 
