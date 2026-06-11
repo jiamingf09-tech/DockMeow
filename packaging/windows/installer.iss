@@ -2,12 +2,12 @@
 ; Produces: DockMeow-Setup-<version>-x64.exe in dist\installers\
 ;
 ; Build via build_win.ps1 (version is passed as /DMyAppVersion=x.y.z).
-; Manual build: iscc /DMyAppVersion=1.0.0 packaging\windows\installer.iss
+; Manual build: iscc /DMyAppVersion=2.0.0 packaging\windows\installer.iss
 
 #define MyAppName "DockMeow"
 ; Allow version override from command line: iscc /DMyAppVersion=0.2.0 ...
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "2.0.0"
 #endif
 #ifndef MyAppSourceDir
   #define MyAppSourceDir "..\..\dist\windows-x64\DockMeow"

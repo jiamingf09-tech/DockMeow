@@ -29,6 +29,7 @@ def _remove_flags(*names: str) -> None:
 # --disable-renderer-accessibility : stop VoiceOver/AX (macOS) or MSAA (Windows)
 #   from descending into the Chromium AX tree, which causes crashes.
 _add_flag("--disable-renderer-accessibility")
+_add_flag("--disable-platform-accessibility-integration")
 
 if _IS_MACOS:
     # --in-process-gpu : unsigned macOS .app bundles lack the entitlement to

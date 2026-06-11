@@ -107,6 +107,27 @@ _STRINGS: dict[str, str] = {
     "results.title": "结果",
     "results.no_pose": "暂无构象",
 
+    # --- Results page: PyMOL integration ---
+    "results.pymol_group": "PyMOL 导入",
+    "results.pymol_path_label": "PyMOL 路径：",
+    "results.pymol_path_hint": "选择 PyMOL 可执行文件，或点“自动搜索”",
+    "results.pymol_browse": "浏览…",
+    "results.pymol_browse_tip": "手动选择 PyMOL 可执行文件",
+    "results.pymol_auto": "自动搜索",
+    "results.pymol_auto_tip": "在常见安装位置与 PATH 中自动查找 PyMOL",
+    "results.pymol_import": "导入 PyMOL",
+    "results.pymol_import_tip": "在 PyMOL 中打开原始受体与全部构象（每个构象一个状态，可逐个切换）",
+    "results.pymol_found": "已找到 PyMOL：\n{path}",
+    "results.pymol_not_found": "未能自动找到 PyMOL。请点“浏览…”手动指定 PyMOL 可执行文件。",
+    "results.pymol_bad_path": "PyMOL 路径无效或不可执行：\n{path}",
+    "results.pymol_no_result": "请先完成对接，再导入 PyMOL。",
+    "results.pymol_no_receptor": "缺少受体结构，无法导入 PyMOL。",
+    "results.pymol_launch_failed": "启动 PyMOL 失败：{err}",
+    "results.pymol_launched": (
+        "已在 PyMOL 中打开受体与 {n} 个构象。\n"
+        "用 PyMOL 右下角的帧滑块或方向键即可切换构象。"
+    ),
+
     # --- Common dialogs ---
     "common.close": "关闭",
     "common.cancel": "取消",

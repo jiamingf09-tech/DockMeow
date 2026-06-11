@@ -10,9 +10,11 @@ No PySide6 imports permitted in this module.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -79,11 +81,25 @@ def _pdbqt_to_sdf(poses_pdbqt: Path, output_sdf: Path) -> None:
         output_sdf.write_text("", encoding="utf-8")
         return
 
+    # meeko returns ONE RDKit mol per ligand with one *conformer* per docked
+    # pose.  SDWriter.write(mol) only emits the default conformer, which would
+    # collapse every pose to a single record — breaking pose switching in the
+    # viewer and the PyMOL multi-state export.  Write every conformer instead.
     from rdkit.Chem import SDWriter
     with SDWriter(str(output_sdf)) as w:
         for mol in rdmols:
-            if mol is not None:
+            if mol is None:
+                continue
+            conformers = list(mol.GetConformers())
+            if not conformers:
                 w.write(mol)
+                continue
+            for pose_index, conf in enumerate(conformers, start=1):
+                try:
+                    mol.SetProp("_Name", f"pose_{pose_index}")
+                except Exception:  # noqa: BLE001
+                    pass
+                w.write(mol, confId=conf.GetId())
 
 
 def _vina_executable() -> Path | None:
@@ -99,6 +115,27 @@ def _vina_executable() -> Path | None:
         if found:
             return Path(found)
     return None
+
+
+def _remove_existing_outputs(*paths: Path) -> None:
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _prefer_vina_cli() -> bool:
+    backend = os.environ.get("DOCKMEOW_VINA_BACKEND", "").strip().lower()
+    if backend in {"cli", "subprocess", "binary"}:
+        return True
+    if backend in {"python", "api", "binding", "bindings"}:
+        return False
+    return (
+        sys.platform == "darwin"
+        and getattr(sys, "frozen", False)
+        and _vina_executable() is not None
+    )
 
 
 def _parse_vina_scores(
@@ -148,6 +185,7 @@ def _run_docking_cli(
     stem = safe_name(config.ligand_pdbqt.stem)
     poses_pdbqt = out_dir / f"{stem}_poses.pdbqt"
     poses_sdf = out_dir / f"{stem}_poses.sdf"
+    _remove_existing_outputs(poses_pdbqt, poses_sdf)
 
     if cb:
         cb("分子对接", 5, "初始化 Vina 命令行后端…")
@@ -270,6 +308,10 @@ def run_docking(
         DockingExecutionError: on Vina failure.
         InterruptedError:      when the caller cancels via progress_callback.
     """
+    if _prefer_vina_cli():
+        _log.info("Using Vina CLI backend for this runtime.")
+        return _run_docking_cli(config, progress_callback)
+
     try:
         from vina import Vina
     except ModuleNotFoundError as exc:
@@ -283,6 +325,7 @@ def run_docking(
     stem = safe_name(config.ligand_pdbqt.stem)
     poses_pdbqt = out_dir / f"{stem}_poses.pdbqt"
     poses_sdf = out_dir / f"{stem}_poses.sdf"
+    _remove_existing_outputs(poses_pdbqt, poses_sdf)
 
     if cb:
         cb("分子对接", 5, "初始化 Vina…")

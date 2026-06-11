@@ -33,6 +33,7 @@ class ParamsPage(QWidget):
     """Slider-based exhaustiveness picker + collapsible advanced section."""
 
     params_ready = Signal(dict)
+    view_result_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -66,6 +67,11 @@ class ParamsPage(QWidget):
         self._estimate = QLabel("")
         self._estimate.setStyleSheet("color: #A6ADC8;")
         outer.addWidget(self._estimate)
+
+        self._run_status = QLabel("")
+        self._run_status.setWordWrap(True)
+        self._run_status.setStyleSheet("color: #A6ADC8;")
+        outer.addWidget(self._run_status)
 
         # Advanced section
         self._advanced = QGroupBox(t("params.advanced_toggle"))
@@ -102,6 +108,7 @@ class ParamsPage(QWidget):
         btn_row.addWidget(self._start_btn)
         outer.addLayout(btn_row)
 
+        self._result_ready = False
         self._refresh_labels()
 
     def _refresh_labels(self) -> None:
@@ -118,4 +125,35 @@ class ParamsPage(QWidget):
         }
 
     def _emit_ready(self) -> None:
+        # Hand off to the dedicated run page (progress shown there); navigation
+        # is driven by MainWindow on params_ready.
         self.params_ready.emit(self.current_params())
+
+    def set_docking_started(self, message: str) -> None:
+        self._result_ready = False
+        self._start_btn.setEnabled(False)
+        self._start_btn.setText("启动中…")
+        self._run_status.setText(message)
+
+    def set_docking_progress(self, pct: int, message: str) -> None:
+        pct = max(0, min(100, int(pct)))
+        self._start_btn.setText(f"{pct}%")
+        self._run_status.setText(message)
+
+    def set_docking_finished(self, message: str = "对接完成。点击“查看结果”打开结果页。") -> None:
+        self._result_ready = True
+        self._start_btn.setEnabled(True)
+        self._start_btn.setText("查看结果")
+        self._run_status.setText(message)
+
+    def set_docking_failed(self, message: str) -> None:
+        self._result_ready = False
+        self._start_btn.setEnabled(True)
+        self._start_btn.setText(t("params.start_btn"))
+        self._run_status.setText(message)
+
+    def reset_docking_state(self) -> None:
+        self._result_ready = False
+        self._start_btn.setEnabled(True)
+        self._start_btn.setText(t("params.start_btn"))
+        self._run_status.setText("")

@@ -35,6 +35,10 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Agent worktrees & temporary smoke-test logs (local only)
+.claude/
+.tmp-logs/
+
 # fpocket test output & staging dirs
 examples/*_out/
 src/dockmeow/bundled/fpocket/linux_x64/

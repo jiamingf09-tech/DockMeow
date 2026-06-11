@@ -207,8 +207,8 @@ a = Analysis(
     hookspath=[str(ROOT / "packaging" / "hooks")],
     hooksconfig={},
     runtime_hooks=[
-        str(ROOT / "packaging" / "hooks" / "rthook-pyside6-eager.py"),
         str(ROOT / "packaging" / "hooks" / "rthook-webengine.py"),
+        str(ROOT / "packaging" / "hooks" / "rthook-pyside6-eager.py"),
     ],
     excludes=[
         # Test / dev tools not needed at runtime
@@ -283,8 +283,8 @@ if IS_MACOS:
             "CFBundleName": "DockMeow",
             "CFBundleDisplayName": "一键对接",
             "CFBundleIdentifier": "com.dockmeow.app",
-            "CFBundleVersion": "0.1.1",
-            "CFBundleShortVersionString": "0.1.1",
+            "CFBundleVersion": "2.0.0",
+            "CFBundleShortVersionString": "2.0.0",
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,   # allow dark mode
             "LSMinimumSystemVersion": "13.0",

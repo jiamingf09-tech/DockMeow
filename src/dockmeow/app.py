@@ -8,9 +8,10 @@ import sys
 import time as _time
 import traceback as _traceback
 from pathlib import Path as _Path
+from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QApplication
 
 from dockmeow.utils.logging_setup import setup_logging
 from dockmeow.utils.paths import resource_path
@@ -30,10 +31,11 @@ def _configure_webengine_flags() -> None:
       colorful cartoon/stick scene as macOS. Operators can still opt into the
       stable CPU Canvas path with DOCKMEOW_WEBENGINE_MODE=cpu/software/canvas
       on machines with broken WebGL drivers.
-    - --disable-renderer-accessibility avoids VoiceOver/MSAA Chromium AX crashes.
+    - Accessibility flags avoid VoiceOver/MSAA Chromium AX crashes.
     """
     _flags = [
         "--disable-renderer-accessibility",
+        "--disable-platform-accessibility-integration",
     ]
     if sys.platform == "darwin" and getattr(sys, "frozen", False):
         # Additional stability flags for PyInstaller .app bundle
@@ -87,6 +89,15 @@ def _configure_webengine_flags() -> None:
     os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(parts).strip()
 
 
+def _using_native_viewer() -> bool:
+    backend = os.environ.get("DOCKMEOW_VIEWER_BACKEND", "").strip().lower()
+    if backend in {"native", "qt", "painter"}:
+        return True
+    if backend in {"webengine", "webgl", "3dmol"}:
+        return False
+    return sys.platform == "darwin" and getattr(sys, "frozen", False)
+
+
 def _force_pyside_eager_import() -> None:
     """Pre-import every PySide6 sub-module in the MAIN THREAD.
 
@@ -103,13 +114,16 @@ def _force_pyside_eager_import() -> None:
         "PySide6.QtCore",
         "PySide6.QtGui",
         "PySide6.QtWidgets",
-        "PySide6.QtWebEngineCore",
-        "PySide6.QtWebEngineWidgets",
         "PySide6.QtNetwork",
         "PySide6.QtOpenGL",
         "PySide6.QtOpenGLWidgets",
         "PySide6.QtPrintSupport",
     ]
+    if not _using_native_viewer():
+        _mods.extend([
+            "PySide6.QtWebEngineCore",
+            "PySide6.QtWebEngineWidgets",
+        ])
     for _mod in _mods:
         try:
             __import__(_mod)
@@ -144,7 +158,17 @@ def _install_excepthook() -> None:
 
 def create_app() -> QApplication:
     """Create and configure the QApplication instance."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+    if sys.platform == "darwin" and getattr(sys, "frozen", False):
+        try:
+            from PySide6.QtGui import QAccessible
+
+            QAccessible.setActive(False)
+        except Exception:  # noqa: BLE001
+            pass
 
     app = QApplication.instance()
     if app is None:
@@ -241,6 +265,23 @@ def _run_e2e_smoke(app: QApplication) -> int:
 
     def _viewer_status(viewer: Viewer3D, key: str) -> dict[str, object]:
         status: dict[str, object] = {}
+        native_status = getattr(viewer, "viewer_status", None)
+        if callable(native_status):
+            deadline = _time.time() + 10
+            while _time.time() < deadline:
+                current = native_status()
+                if isinstance(current, dict):
+                    status = current
+                atoms = status.get("atoms")
+                if isinstance(atoms, (int, float)) and atoms > 0:
+                    break
+                _wait_ms(150)
+                app.processEvents()
+            result_data[f"{key}_viewer_status"] = status
+            atoms = status.get("atoms")
+            if not isinstance(atoms, (int, float)) or atoms <= 0:
+                raise RuntimeError(f"3D viewer loaded no atoms for {key}: {status!r}")
+            return status
 
         def _read_once() -> dict[str, object]:
             done = {"value": False}

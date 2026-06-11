@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QColorDialog,
     QFileDialog,
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QSizePolicy,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -98,18 +101,10 @@ class ResultsPage(QWidget):
         )
         rl = QVBoxLayout(right)
 
-        self._table = QTableWidget(0, 4)
-        self._table.setHorizontalHeaderLabels([
-            t("results.pose"),
-            t("results.affinity"),
-            t("results.rmsd_lb"),
-            t("results.rmsd_ub"),
-        ])
-        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._on_pose_changed)
-        rl.addWidget(self._table, 1)
+        self._pose_list = QListWidget()
+        self._pose_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self._pose_list.currentRowChanged.connect(self._on_pose_changed)
+        rl.addWidget(self._pose_list, 1)
 
         btns = QHBoxLayout()
         self._sdf_btn = QPushButton(t("results.export_sdf"))
@@ -123,6 +118,42 @@ class ResultsPage(QWidget):
         for b in (self._sdf_btn, self._pdb_btn, self._pdf_btn, self._new_btn):
             btns.addWidget(b)
         rl.addLayout(btns)
+
+        # ---- PyMOL integration -------------------------------------------
+        pymol_group = QGroupBox(t("results.pymol_group"))
+        pg = QGridLayout(pymol_group)
+        pg.setContentsMargins(10, 8, 10, 10)
+        pg.setHorizontalSpacing(6)
+
+        self._pymol_path_edit = QLineEdit()
+        self._pymol_path_edit.setPlaceholderText(t("results.pymol_path_hint"))
+        self._pymol_path_edit.setClearButtonEnabled(True)
+        self._pymol_path_edit.editingFinished.connect(self._save_pymol_path)
+
+        self._pymol_browse_btn = QPushButton(t("results.pymol_browse"))
+        self._pymol_browse_btn.setToolTip(t("results.pymol_browse_tip"))
+        self._pymol_browse_btn.clicked.connect(self._on_pymol_browse)
+
+        self._pymol_auto_btn = QPushButton(t("results.pymol_auto"))
+        self._pymol_auto_btn.setToolTip(t("results.pymol_auto_tip"))
+        self._pymol_auto_btn.clicked.connect(self._on_pymol_auto)
+
+        self._pymol_import_btn = QPushButton(t("results.pymol_import"))
+        self._pymol_import_btn.setToolTip(t("results.pymol_import_tip"))
+        self._pymol_import_btn.clicked.connect(self._on_pymol_import)
+
+        pg.addWidget(QLabel(t("results.pymol_path_label")), 0, 0)
+        pg.addWidget(self._pymol_path_edit, 0, 1)
+        pg.addWidget(self._pymol_browse_btn, 0, 2)
+        pg.addWidget(self._pymol_auto_btn, 0, 3)
+        pg.addWidget(self._pymol_import_btn, 1, 0, 1, 4)
+        pg.setColumnStretch(1, 1)
+        rl.addWidget(pymol_group)
+
+        # Restore the previously chosen PyMOL path, if any.
+        saved_pymol = self._load_pymol_path()
+        if saved_pymol:
+            self._pymol_path_edit.setText(saved_pymol)
 
         splitter.addWidget(right)
         splitter.setStretchFactor(0, 3)
@@ -156,23 +187,37 @@ class ResultsPage(QWidget):
         self._destroy_viewer()
 
     def on_page_enter(self) -> None:
-        if self._pdb_path is None:
-            return
-        rows = self._table.selectionModel().selectedRows()
-        idx = rows[0].row() if rows else 0
-        if self._poses_sdf_blocks and 0 <= idx < len(self._poses_sdf_blocks):
-            self._ensure_viewer().load_result_pose(
-                self._pdb_path, self._poses_sdf_blocks[idx]
-            )
-        else:
-            self._ensure_viewer().load_receptor(self._pdb_path)
+        # Load the 3D only once the page is actually visible and laid out, so the
+        # WebGL canvas has its real on-screen size.  Loading while hidden made
+        # the molecule render stretched (wrong aspect) or not appear until a
+        # pose was double-clicked.
+        QTimer.singleShot(0, self._load_into_viewer)
+
+    def _load_into_viewer(self) -> None:
+        """(Re)load the receptor + current pose into a correctly-sized viewer."""
+        if self._pdb_path and self._poses_sdf_blocks:
+            idx = self._pose_list.currentRow()
+            idx = 0 if idx < 0 else min(idx, len(self._poses_sdf_blocks) - 1)
+            viewer = self._ensure_viewer()
+            viewer.load_result_pose(self._pdb_path, self._poses_sdf_blocks[idx])
+            # Refit after layout settles to lock in the correct aspect + zoom.
+            QTimer.singleShot(80, viewer.refit)
+            QTimer.singleShot(320, viewer.refit)
+        elif self._pdb_path:
+            viewer = self._ensure_viewer()
+            viewer.load_receptor(self._pdb_path)
+            QTimer.singleShot(80, viewer.refit)
+            QTimer.singleShot(320, viewer.refit)
 
     def set_context(self, receptor_info, ligand_info, pdb_path: Path) -> None:
         self._receptor_info = receptor_info
         self._ligand_info = ligand_info
         self._pdb_path = Path(pdb_path) if pdb_path else None
-        if self._pdb_path:
-            self._ensure_viewer().load_receptor(self._pdb_path)
+        # Defer actual viewer loading to on_page_enter()/_load_into_viewer() so
+        # it runs when the page is visible and sized.  Load now only if we're
+        # already the visible page.
+        if self._pdb_path and self.isVisible():
+            self._load_into_viewer()
 
     def set_result(self, result) -> None:
         self._result = result
@@ -186,42 +231,27 @@ class ResultsPage(QWidget):
         rmsd_lb = list(result.rmsd_lb or [0.0] * len(scores))
         rmsd_ub = list(result.rmsd_ub or [0.0] * len(scores))
 
-        self._table.setRowCount(len(scores))
+        self._pose_list.blockSignals(True)
+        self._pose_list.clear()
         for i, s in enumerate(scores):
-            self._table.setItem(i, 0, QTableWidgetItem(str(i + 1)))
-            self._table.setItem(i, 1, QTableWidgetItem(f"{s:.2f}"))
-            self._table.setItem(
-                i, 2, QTableWidgetItem(f"{rmsd_lb[i]:.2f}" if i < len(rmsd_lb) else "-"),
-            )
-            self._table.setItem(
-                i, 3, QTableWidgetItem(f"{rmsd_ub[i]:.2f}" if i < len(rmsd_ub) else "-"),
+            lb = f"{rmsd_lb[i]:.2f}" if i < len(rmsd_lb) else "-"
+            ub = f"{rmsd_ub[i]:.2f}" if i < len(rmsd_ub) else "-"
+            self._pose_list.addItem(
+                QListWidgetItem(
+                    f"{t('results.pose')} {i + 1}    "
+                    f"{t('results.affinity')}: {s:.2f}    "
+                    f"{t('results.rmsd_lb')}: {lb}    "
+                    f"{t('results.rmsd_ub')}: {ub}"
+                )
             )
         if scores:
-            self._table.selectRow(0)
+            self._pose_list.setCurrentRow(0)
+        self._pose_list.blockSignals(False)
 
-        # Pre-capture receptor + best pose screenshot for later PDF export.
-        # Use the on_ready callback so capture fires only after loadBestPose() JS
-        # returns (models loaded + render() issued) — avoids fixed-timer race.
-        if self._pdb_path and self._poses_sdf_blocks:
-            _shot_path = Path(tempfile.mkstemp(suffix="_dm_pdf.png")[1])
-
-            def _auto_save(path: Path) -> None:
-                if path.exists():
-                    self._auto_screenshot = path
-
-            def _do_capture() -> None:
-                # loadBestPose render() fired; wait for GPU to flush several frames.
-                # Extra headroom so on_page_enter (called by _go_to_page right after
-                # set_result) doesn't overwrite this view before capture fires.
-                QTimer.singleShot(
-                    600, lambda: self._ensure_viewer().capture_png(_shot_path, callback=_auto_save)
-                )
-
-            self._ensure_viewer().load_best_pose_for_export(
-                self._pdb_path,
-                self._poses_sdf_blocks[0],
-                on_ready=_do_capture,
-            )
+        # Viewer loading is deferred to on_page_enter(); load now only if the
+        # results page is already the visible one.
+        if scores and self._pdb_path and self._poses_sdf_blocks and self.isVisible():
+            self._load_into_viewer()
 
     # --- Ray / background helpers -----------------------------------------
     def _update_bg_color_btn(self) -> None:
@@ -272,6 +302,103 @@ class ResultsPage(QWidget):
 
         self._viewer.capture_png(out_path, callback=_on_done)
 
+    # --- PyMOL integration ------------------------------------------------
+    @staticmethod
+    def _settings() -> QSettings:
+        return QSettings("DockMeow", "DockMeow")
+
+    def _load_pymol_path(self) -> str:
+        return str(self._settings().value("pymol/executable", "", type=str) or "")
+
+    def _save_pymol_path(self) -> None:
+        self._settings().setValue("pymol/executable", self._pymol_path_edit.text().strip())
+
+    def _on_pymol_browse(self) -> None:
+        """Pick the PyMOL executable manually."""
+        if sys.platform == "win32":
+            filt = "PyMOL (PyMOLWin.exe pymol.exe);;可执行文件 (*.exe);;所有文件 (*)"
+        else:
+            filt = "所有文件 (*)"
+        start = self._pymol_path_edit.text().strip() or str(Path.home())
+        path, _ = QFileDialog.getOpenFileName(
+            self, t("results.pymol_browse"), start, filt
+        )
+        if path:
+            self._pymol_path_edit.setText(path)
+            self._save_pymol_path()
+
+    def _on_pymol_auto(self) -> None:
+        """Auto-search common locations for a PyMOL executable."""
+        from dockmeow.core.pymol_export import find_pymol
+
+        found = find_pymol()
+        if found:
+            self._pymol_path_edit.setText(str(found))
+            self._save_pymol_path()
+            QMessageBox.information(
+                self, t("results.pymol_group"), t("results.pymol_found", path=str(found))
+            )
+        else:
+            QMessageBox.warning(
+                self, t("results.pymol_group"), t("results.pymol_not_found")
+            )
+
+    def _on_pymol_import(self) -> None:
+        """Open the receptor + every pose in PyMOL (one state per conformation)."""
+        from dockmeow.core import pymol_export
+
+        if self._result is None or not self._poses_sdf_blocks:
+            QMessageBox.information(
+                self, t("results.pymol_import"), t("results.pymol_no_result")
+            )
+            return
+        if not self._pdb_path or not Path(self._pdb_path).is_file():
+            QMessageBox.warning(
+                self, t("results.pymol_import"), t("results.pymol_no_receptor")
+            )
+            return
+
+        # Resolve the PyMOL executable: prefer the field, else auto-search.
+        exe_text = self._pymol_path_edit.text().strip()
+        if exe_text:
+            if not pymol_export.is_valid_pymol(exe_text):
+                QMessageBox.warning(
+                    self, t("results.pymol_import"),
+                    t("results.pymol_bad_path", path=exe_text),
+                )
+                return
+            exe: Path | None = Path(exe_text)
+        else:
+            exe = pymol_export.find_pymol()
+            if exe is None:
+                QMessageBox.warning(
+                    self, t("results.pymol_import"), t("results.pymol_not_found")
+                )
+                return
+            self._pymol_path_edit.setText(str(exe))
+            self._save_pymol_path()
+
+        # Resolve the poses SDF — prefer the on-disk file, else rebuild it.
+        poses_sdf = Path(self._result.poses_sdf)
+        if not poses_sdf.is_file() or poses_sdf.stat().st_size == 0:
+            tmp = Path(tempfile.mkstemp(suffix=".sdf")[1])
+            tmp.write_text("".join(self._poses_sdf_blocks), encoding="utf-8")
+            poses_sdf = tmp
+
+        try:
+            pymol_export.export_to_pymol(Path(self._pdb_path), poses_sdf, exe)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(
+                self, t("results.pymol_import"),
+                t("results.pymol_launch_failed", err=str(exc)),
+            )
+            return
+
+        QMessageBox.information(
+            self, t("results.pymol_import"),
+            t("results.pymol_launched", n=str(len(self._poses_sdf_blocks))),
+        )
+
     @staticmethod
     def _split_sdf(text: str) -> list[str]:
         if not text:
@@ -288,14 +415,13 @@ class ResultsPage(QWidget):
         return blocks
 
     def _on_pose_changed(self) -> None:
-        rows = self._table.selectionModel().selectedRows()
-        if not rows or not self._poses_sdf_blocks:
+        if not self._poses_sdf_blocks:
             return
-        idx = rows[0].row()
+        idx = self._pose_list.currentRow()
         if 0 <= idx < len(self._poses_sdf_blocks) and self._pdb_path:
-            self._ensure_viewer().load_result_pose(
-                self._pdb_path, self._poses_sdf_blocks[idx]
-            )
+            viewer = self._ensure_viewer()
+            viewer.load_result_pose(self._pdb_path, self._poses_sdf_blocks[idx])
+            QTimer.singleShot(60, viewer.refit)
 
     # --- exports -------------------------------------------------------
     def _export_sdf(self) -> None:

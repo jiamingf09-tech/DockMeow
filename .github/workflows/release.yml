@@ -131,8 +131,10 @@ jobs:
 
       - name: Build Windows installer
         if: runner.os == 'Windows'
-        shell: cmd
-        run: iscc /DMyAppSourceDir=..\..\dist\DockMeow packaging\windows\installer.iss
+        shell: pwsh
+        run: |
+          $version = python -c "import sys; sys.path.insert(0,'src'); from dockmeow.version import __version__; print(__version__)"
+          iscc "/DMyAppVersion=$version" "/DMyAppSourceDir=..\..\dist\DockMeow" packaging\windows\installer.iss
 
       # ── Package: Linux AppImage ───────────────────────────────────────────
       - name: Package Linux AppImage

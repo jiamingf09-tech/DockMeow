@@ -13,6 +13,7 @@ No PySide6 imports permitted in this module.
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -142,23 +143,23 @@ def whole_protein_box(receptor: ReceptorInfo, padding: float = 5.0) -> Pocket:
 
 def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
     """Run fpocket and parse its output into Pocket objects."""
-    from dockmeow.utils.paths import fpocket_binary
+    from dockmeow.utils.paths import fpocket_candidates, is_usable_executable
 
-    binary = fpocket_binary()
-    if not binary.exists():
-        raise FileNotFoundError(f"fpocket binary not found: {binary}")
+    binary = next((path for path in fpocket_candidates() if is_usable_executable(path)), None)
+    if binary is None:
+        searched = ", ".join(str(path) for path in fpocket_candidates())
+        raise FileNotFoundError(f"fpocket binary not found; searched: {searched}")
 
     # fpocket writes output next to the input PDB, not in cwd.
     # Copy the PDB into work_dir so output lands there (keeps temp directories clean).
-    import shutil as _shutil
-    local_pdb = work_dir / receptor_pdb.name
+    local_pdb = work_dir / "receptor.pdb"
     if receptor_pdb.resolve() != local_pdb.resolve():
-        _shutil.copy2(receptor_pdb, local_pdb)
+        shutil.copy2(receptor_pdb, local_pdb)
 
     out_dir = work_dir / f"{local_pdb.stem}_out"
     # Run from work_dir and pass a local filename. Older fpocket releases do not
     # parse Windows absolute paths with backslashes correctly.
-    cmd = [str(binary), "-f", local_pdb.name]
+    cmd = [str(binary), "-f", local_pdb.name, "-w", "pdb"]
 
     _log.debug("Running fpocket: %s", " ".join(cmd))
     try:
@@ -170,6 +171,17 @@ def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
             cwd=str(work_dir),
             **hidden_subprocess_kwargs(),
         )
+        if proc.returncode != 0 and "-w" in cmd:
+            fallback_cmd = [str(binary), "-f", local_pdb.name]
+            _log.debug("Retrying fpocket without -w: %s", " ".join(fallback_cmd))
+            proc = subprocess.run(
+                fallback_cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=str(work_dir),
+                **hidden_subprocess_kwargs(),
+            )
     except OSError as exc:
         raise PocketDetectionError(
             f"fpocket could not execute: {exc}",
@@ -193,9 +205,9 @@ def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
     # fpocket 4.x writes <stem>_out/pockets/pocket*_atm.pdb (individual pocket files)
     # Older versions placed them directly in <stem>_out/ — check both layouts.
     if out_dir.exists():
-        pqr_files = sorted((out_dir / "pockets").glob("pocket*_atm.pdb"))
+        pqr_files = sorted(out_dir.rglob("pocket*_atm.pdb"))
         if not pqr_files:
-            pqr_files = sorted(out_dir.glob("pocket*_atm.pdb"))
+            pqr_files = sorted(out_dir.rglob("pocket*_atm.pqr"))
     else:
         pqr_files = []
 
@@ -299,15 +311,6 @@ def detect_pockets(
                 )
         except Exception as exc:
             _log.warning("Co-crystal detection failed: %s", exc)
-
-    if pockets:
-        # Still add whole-protein as last option
-        try:
-            whole = whole_protein_box(receptor)
-            pockets.append(whole)
-        except Exception:
-            pass
-        return pockets
 
     # --- Priority 2: fpocket ---
     with tempfile.TemporaryDirectory() as tmpdir:

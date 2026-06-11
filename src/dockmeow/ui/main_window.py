@@ -42,6 +42,7 @@ from dockmeow.ui.pages.page_results import ResultsPage
 from dockmeow.ui.pages.page_run import RunPage
 from dockmeow.utils.paths import resource_path
 from dockmeow.version import __version__
+from dockmeow.workers.docking_worker import DockingWorker
 
 
 class MainWindow(QMainWindow):
@@ -57,6 +58,7 @@ class MainWindow(QMainWindow):
         self._pocket = None
         self._params: dict | None = None
         self._docking_result = None
+        self._docking_worker: DockingWorker | None = None
 
         self._build_ui()
         self._connect_signals()
@@ -145,6 +147,7 @@ class MainWindow(QMainWindow):
         self._receptor_page.receptor_ready.connect(self._on_receptor_ready)
         self._ligand_page.ligand_ready.connect(self._on_ligand_ready)
         self._params_page.params_ready.connect(self._on_params_ready)
+        self._params_page.view_result_requested.connect(self._open_finished_result)
         self._run_page.run_finished.connect(self._on_run_finished)
         self._results_page.new_docking_requested.connect(self._reset_to_start)
 
@@ -188,7 +191,8 @@ class MainWindow(QMainWindow):
     def _max_unlocked_page(self) -> int:
         if self._docking_result is not None:
             return 5
-        if self._params is not None:
+        if self._stack.currentIndex() == 4:
+            # Actively running docking on the run page — keep it reachable.
             return 4
         if self._pocket is not None:
             return 3
@@ -255,10 +259,12 @@ class MainWindow(QMainWindow):
     def _on_params_ready(self, params: dict) -> None:
         self._params = params
         if not self._can_run():
+            self._params_page.reset_docking_state()
             QMessageBox.warning(self, t("app.title"),
                                 "请先完成受体、配体、口袋的准备。")
             return
 
+        self._docking_result = None
         cfg = DockingConfig(
             receptor_pdbqt=self._receptor_info.pdbqt_path,
             ligand_pdbqt=self._ligand_info.pdbqt_path,
@@ -270,19 +276,63 @@ class MainWindow(QMainWindow):
             energy_range=float(params["energy_range"]),
             seed=int(params["seed"]),
         )
+        # Jump to the dedicated run page (⑤对接), show progress there, then the
+        # run page's run_finished signal advances to the results page (⑥结果).
         self._go_to_page(4)
         self._run_page.start(cfg)
 
-    def _on_run_finished(self, result) -> None:
+    def _start_docking_in_place(self, cfg: DockingConfig) -> None:
+        if self._docking_worker is not None and self._docking_worker.isRunning():
+            return
+        self._params_page.set_docking_started("启动 Vina 对接后端…")
+        worker = DockingWorker(cfg)
+        self._docking_worker = worker
+        worker.progress.connect(self._on_docking_progress)
+        worker.finished_ok.connect(self._on_docking_done)
+        worker.failed.connect(self._on_docking_failed)
+        worker.finished.connect(self._on_docking_worker_finished)
+        worker.start()
+
+    def _on_docking_progress(self, stage: str, pct: int, msg: str) -> None:
+        self._params_page.set_docking_progress(pct, msg or stage)
+
+    def _on_docking_done(self, result) -> None:
+        self._prepare_results(result)
+        self._params_page.set_docking_finished()
+        self._update_license_status()
+
+    def _on_docking_failed(self, user_message: str, suggestion: str) -> None:
+        detail = f"{user_message} {suggestion}".strip()
+        self._params_page.set_docking_failed(detail)
+        QMessageBox.warning(self, t("app.title"), detail)
+
+    def _on_docking_worker_finished(self) -> None:
+        worker = self._docking_worker
+        self._docking_worker = None
+        if worker is not None:
+            worker.deleteLater()
+
+    def _prepare_results(self, result) -> None:
         self._docking_result = result
         self._results_page.set_context(
             self._receptor_info, self._ligand_info, self._pdb_path
         )
         self._results_page.set_result(result)
+
+    def _open_finished_result(self) -> None:
+        if self._docking_result is None:
+            return
+        self._go_to_page(5)
+        self._update_license_status()
+
+    def _on_run_finished(self, result) -> None:
+        self._prepare_results(result)
         self._go_to_page(5)
         self._update_license_status()
 
     def _reset_to_start(self) -> None:
+        self._params_page.reset_docking_state()
+        self._docking_result = None
         self._go_to_page(0)
 
     def _can_run(self) -> bool:

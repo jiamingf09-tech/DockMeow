@@ -53,8 +53,8 @@ class PocketPage(QWidget):
 
         # ---- Windows platform notice (permanent, shown only when fpocket absent) ----
         if sys.platform == "win32":
-            from dockmeow.utils.paths import fpocket_binary
-            if not fpocket_binary().exists():
+            from dockmeow.utils.paths import fpocket_available
+            if not fpocket_available():
                 warn_bar = QFrame()
                 warn_bar.setObjectName("WinFpocketWarn")
                 warn_bar.setStyleSheet(

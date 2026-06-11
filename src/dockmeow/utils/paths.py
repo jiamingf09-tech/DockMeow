@@ -9,9 +9,37 @@ Key functions:
 
 from __future__ import annotations
 
+import os
 import platform
 import sys
 from pathlib import Path
+
+
+def _resource_roots() -> list[Path]:
+    roots: list[Path] = []
+    if hasattr(sys, "_MEIPASS"):
+        roots.append(Path(sys._MEIPASS))
+
+    executable = Path(sys.executable).resolve()
+    if sys.platform == "darwin" and ".app/Contents/MacOS" in str(executable):
+        contents = executable.parent.parent
+        roots.extend([contents / "Resources", contents / "Frameworks"])
+    elif getattr(sys, "frozen", False):
+        roots.extend([executable.parent, executable.parent / "_internal"])
+
+    roots.append(Path(__file__).parent.parent)
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        try:
+            key = root.resolve()
+        except OSError:
+            key = root
+        if key not in seen:
+            deduped.append(root)
+            seen.add(key)
+    return deduped
 
 
 def resource_path(relative: str) -> Path:
@@ -23,9 +51,11 @@ def resource_path(relative: str) -> Path:
     Returns:
         Absolute Path, whether running from source or a frozen bundle.
     """
-    if hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / relative
-    return Path(__file__).parent.parent / relative
+    for root in _resource_roots():
+        candidate = root / relative
+        if candidate.exists():
+            return candidate
+    return _resource_roots()[0] / relative
 
 
 def user_workspace() -> Path:
@@ -75,6 +105,44 @@ def fpocket_binary() -> Path:
         sub = "linux"
         name = "fpocket"
     return resource_path(f"bundled/fpocket/{sub}/{name}")
+
+
+def fpocket_candidates() -> list[Path]:
+    """Return possible bundled fpocket executable paths for this platform."""
+    if sys.platform == "win32":
+        subdirs = ["windows"]
+        name = "fpocket.exe"
+    elif sys.platform == "darwin":
+        machine = platform.machine().lower()
+        subdirs = ["macos_arm64" if machine in {"arm64", "aarch64"} else "macos_x64"]
+        name = "fpocket"
+    else:
+        subdirs = ["linux", "linux_x64"]
+        name = "fpocket"
+
+    candidates: list[Path] = []
+    for root in _resource_roots():
+        for sub in subdirs:
+            candidates.append(root / "bundled" / "fpocket" / sub / name)
+    return candidates
+
+
+def is_usable_executable(path: Path) -> bool:
+    if not path.exists() or not path.is_file():
+        return False
+    if sys.platform == "win32":
+        return True
+    if os.access(path, os.X_OK):
+        return True
+    try:
+        path.chmod(path.stat().st_mode | 0o755)
+    except OSError:
+        return False
+    return os.access(path, os.X_OK)
+
+
+def fpocket_available() -> bool:
+    return any(is_usable_executable(path) for path in fpocket_candidates())
 
 
 def vina_binary() -> Path:

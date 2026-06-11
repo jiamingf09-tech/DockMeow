@@ -22,7 +22,7 @@ from dockmeow.core.exceptions import DockMeowError
 from dockmeow.core.ligand import LigandInfo
 from dockmeow.core.pocket import Pocket
 from dockmeow.core.receptor import ReceptorInfo
-from dockmeow.utils.paths import fpocket_binary, resource_path
+from dockmeow.utils.paths import fpocket_available, resource_path
 from dockmeow.version import __version__
 
 _log = logging.getLogger(__name__)
@@ -412,7 +412,7 @@ def _windows_fpocket_notice(pocket: Pocket) -> str:
     if pocket.source in {"cocrystal", "fpocket"}:
         return ""
     try:
-        if fpocket_binary().exists():
+        if fpocket_available():
             return ""
     except Exception:  # noqa: BLE001
         pass
