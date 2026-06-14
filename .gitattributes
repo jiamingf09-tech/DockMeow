@@ -1,3 +1,0 @@
-src/dockmeow/bundled/fpocket/**/fpocket filter=lfs diff=lfs merge=lfs -text
-src/dockmeow/bundled/fpocket/**/fpocket.exe filter=lfs diff=lfs merge=lfs -text
-src/dockmeow/bundled/fpocket/**/*.dll filter=lfs diff=lfs merge=lfs -text
