@@ -6,7 +6,7 @@
 
 ## macOS 首次启动
 
-由于内测版未做苹果代码签名，首次启动会提示"DockMeow 已损坏，无法打开"。
+当前发布包可能尚未完成 Apple Developer ID 签名/公证，首次启动时 macOS 可能提示"DockMeow 已损坏，无法打开"，或要求将它移到废纸篓。请不要删除软件。
 
 请打开终端，执行以下命令（**一次性，之后无需重复**）：
 
@@ -14,9 +14,9 @@
 xattr -cr /Applications/DockMeow.app
 ```
 
-然后正常双击启动即可。
+然后右键点击 **DockMeow.app** → **打开**，或正常双击启动即可。
 
-> **说明**：此命令仅移除 macOS 的隔离标记（quarantine flag），不会修改软件本身。正式发布版将通过苹果公证（notarization），届时无需此步骤。
+> **说明**：此命令仅移除 macOS 的隔离标记（quarantine flag），不会修改软件本身。如果 DockMeow 安装在其他位置，请把 `/Applications/DockMeow.app` 替换成实际路径。
 
 ---
 
