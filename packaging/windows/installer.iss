@@ -2,12 +2,12 @@
 ; Produces: DockMeow-Setup-<version>-x64.exe in dist\installers\
 ;
 ; Build via build_win.ps1 (version is passed as /DMyAppVersion=x.y.z).
-; Manual build: iscc /DMyAppVersion=2.0.0 packaging\windows\installer.iss
+; Manual build: iscc /DMyAppVersion=2.1.0 packaging\windows\installer.iss
 
 #define MyAppName "DockMeow"
 ; Allow version override from command line: iscc /DMyAppVersion=0.2.0 ...
 #ifndef MyAppVersion
-  #define MyAppVersion "2.0.0"
+  #define MyAppVersion "2.1.0"
 #endif
 #ifndef MyAppSourceDir
   #define MyAppSourceDir "..\..\dist\windows-x64\DockMeow"
@@ -20,9 +20,9 @@ AppId={{F5A3B8E2-4D2C-4A7B-9E1D-DockMeowApp1}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-AppPublisherURL=https://github.com/dockmeow/dockmeow
-AppSupportURL=https://github.com/dockmeow/dockmeow/issues
-AppUpdatesURL=https://github.com/dockmeow/dockmeow/releases
+AppPublisherURL=https://github.com/jiamingf09-tech/DockMeow
+AppSupportURL=https://github.com/jiamingf09-tech/DockMeow/issues
+AppUpdatesURL=https://github.com/jiamingf09-tech/DockMeow/releases
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes

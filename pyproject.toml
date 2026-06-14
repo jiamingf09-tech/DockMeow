@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dockmeow"
-version = "2.0.0"
+version = "2.1.0"
 description = "DockMeow / 一键对接 — GUI-based molecular docking for researchers"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -60,7 +60,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "--tb=short -m 'not slow'"
-norecursedirs = ["tools", "packaging", ".venv*", "dist", "build"]
+norecursedirs = ["tools", "packaging", ".venv*", "dist", "build", ".claude"]
 markers = [
     "slow: end-to-end tests that run the full docking pipeline (deselected by default)",
 ]

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -40,6 +40,13 @@ from dockmeow.ui.pages.page_pocket import PocketPage
 from dockmeow.ui.pages.page_receptor import ReceptorPage
 from dockmeow.ui.pages.page_results import ResultsPage
 from dockmeow.ui.pages.page_run import RunPage
+from dockmeow.ui.post_docking_prompts import (
+    PostDockingPromptPlan,
+    disable_star_prompt,
+    record_successful_docking,
+    show_open_source_notice,
+    show_star_prompt,
+)
 from dockmeow.utils.paths import resource_path
 from dockmeow.version import __version__
 from dockmeow.workers.docking_worker import DockingWorker
@@ -59,6 +66,7 @@ class MainWindow(QMainWindow):
         self._params: dict | None = None
         self._docking_result = None
         self._docking_worker: DockingWorker | None = None
+        self._pending_post_docking_prompt: PostDockingPromptPlan | None = None
 
         self._build_ui()
         self._connect_signals()
@@ -329,6 +337,21 @@ class MainWindow(QMainWindow):
         self._prepare_results(result)
         self._go_to_page(5)
         self._update_license_status()
+        self._queue_post_docking_prompts()
+
+    def _queue_post_docking_prompts(self) -> None:
+        self._pending_post_docking_prompt = record_successful_docking()
+        QTimer.singleShot(350, self._show_post_docking_prompts)
+
+    def _show_post_docking_prompts(self) -> None:
+        plan = self._pending_post_docking_prompt
+        self._pending_post_docking_prompt = None
+        if plan is None:
+            return
+        if plan.show_open_source_notice:
+            show_open_source_notice(self)
+        if plan.show_star_prompt and show_star_prompt(plan.completed_count, self):
+            disable_star_prompt()
 
     def _reset_to_start(self) -> None:
         self._params_page.reset_docking_state()
