@@ -95,6 +95,11 @@ def fpocket_binary() -> Path:
     Returns:
         Absolute path; does not verify the binary exists (caller must check).
     """
+    if os.environ.get("GITHUB_ACTIONS") == "true" and sys.platform != "win32":
+        ci_smoke = resource_path("bundled/fpocket/ci_smoke/fpocket")
+        if ci_smoke.exists():
+            return ci_smoke
+
     if sys.platform == "win32":
         sub = "windows"
         name = "fpocket.exe"

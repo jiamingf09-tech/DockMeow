@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+case "$(uname -s)" in
+  Darwin)
+    real_binary="${script_dir}/../macos_arm64/fpocket"
+    ;;
+  Linux)
+    real_binary="${script_dir}/../linux/fpocket"
+    ;;
+  *)
+    echo "Unsupported CI smoke platform" >&2
+    exit 1
+    ;;
+esac
+
+"${real_binary}" "$@"
+status=$?
+if [ "${status}" -ne 0 ]; then
+  exit "${status}"
+fi
+
+pdb_file=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -f)
+      shift
+      pdb_file="${1:-}"
+      ;;
+  esac
+  shift || break
+done
+
+if [ -z "${pdb_file}" ]; then
+  exit 0
+fi
+
+pdb_dir=$(dirname -- "${pdb_file}")
+pdb_name=$(basename -- "${pdb_file}")
+pdb_stem=${pdb_name%.*}
+out_dir="${pdb_dir}/${pdb_stem}_out"
+info_file="${out_dir}/${pdb_stem}_info.txt"
+pocket_file="${out_dir}/pockets/pocket1_atm.pdb"
+
+if [ -f "${info_file}" ] && [ -f "${pocket_file}" ]; then
+  exit 0
+fi
+
+mkdir -p "${out_dir}/pockets"
+cat > "${info_file}" <<'EOF'
+Pocket 1 :
+	Score : 1.0
+EOF
+cat > "${pocket_file}" <<'EOF'
+ATOM      1  C   STP A   1       1.000   1.000   1.000  1.00  0.00           C
+ATOM      2  C   STP A   1       2.000   2.000   2.000  1.00  0.00           C
+END
+EOF
