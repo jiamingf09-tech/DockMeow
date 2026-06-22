@@ -99,6 +99,11 @@ jobs:
             done
           fi
 
+          # PyInstaller signs Mach-O files ad-hoc, but post-build rpath edits
+          # invalidate those signatures. Re-sign the final app and make strict
+          # verification a release gate before creating the DMG.
+          packaging/macos/sign_app.sh dist/DockMeow.app
+
           VERSION="$(python -c "import sys; sys.path.insert(0,'src'); from dockmeow.version import __version__; print(__version__)")"
           ARCH="${{ matrix.arch }}"
           DMG_NAME="DockMeow-${VERSION}-${ARCH}.dmg"
@@ -108,6 +113,20 @@ jobs:
             -ov \
             -format UDZO \
             "dist/installers/${DMG_NAME}"
+
+          hdiutil verify "dist/installers/${DMG_NAME}"
+          MOUNT_DIR="$(mktemp -d)"
+          cleanup() {
+            hdiutil detach "${MOUNT_DIR}" >/dev/null 2>&1 || true
+            rmdir "${MOUNT_DIR}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          hdiutil attach -nobrowse -readonly -mountpoint "${MOUNT_DIR}" \
+            "dist/installers/${DMG_NAME}" >/dev/null
+          codesign --verify --deep --strict "${MOUNT_DIR}/DockMeow.app"
+          test "$(defaults read "${MOUNT_DIR}/DockMeow.app/Contents/Info" CFBundleShortVersionString)" = "${VERSION}"
+          cleanup
+          trap - EXIT
           echo "Created dist/installers/${DMG_NAME}"
 
       # ── Package: Windows Inno Setup ───────────────────────────────────────

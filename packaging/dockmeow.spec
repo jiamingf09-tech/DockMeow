@@ -283,15 +283,11 @@ if IS_MACOS:
             "CFBundleName": "DockMeow",
             "CFBundleDisplayName": "一键对接",
             "CFBundleIdentifier": "com.dockmeow.app",
-            "CFBundleVersion": "2.3.0",
-            "CFBundleShortVersionString": "2.3.0",
+            "CFBundleVersion": "2.3.1",
+            "CFBundleShortVersionString": "2.3.1",
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,   # allow dark mode
             "LSMinimumSystemVersion": "13.0",
             "NSHumanReadableCopyright": "© 2026 DockMeow",
-            # Qt WebEngine entitlements (unsigned dev build)
-            "com.apple.security.cs.allow-jit": True,
-            "com.apple.security.cs.allow-unsigned-executable-memory": True,
-            "com.apple.security.cs.disable-library-validation": True,
         },
     )

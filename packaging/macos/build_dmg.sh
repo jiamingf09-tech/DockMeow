@@ -33,7 +33,7 @@ echo "╚═══════════════════════�
 echo ""
 echo "▶ Running PyInstaller…"
 PYTHONPATH=src .venv-build/bin/pyinstaller packaging/dockmeow.spec \
-    --noconfirm --distpath "$DIST_BASE" --workpath "$WORK_BASE"
+    --clean --noconfirm --distpath "$DIST_BASE" --workpath "$WORK_BASE"
 
 if [[ ! -d "$DIST_APP" ]]; then
     echo "ERROR: $DIST_APP not found after PyInstaller run."
@@ -66,76 +66,14 @@ if [[ -f "$VINA_SO" ]]; then
 fi
 
 # ── Step 3: Code sign ────────────────────────────────────────────────────────
-# Always apply at least an ad-hoc signature WITH entitlements so that
-#   com.apple.security.cs.disable-library-validation takes effect.
-# Without this, macOS 15 (Library Validation) kills the process the moment
-# Shiboken's lazy-import calls dlopen() for an unsigned PySide6 dylib.
-#
-# Signing order MUST be inside-out:
-#   1. individual .so / .dylib files
-#   2. nested .app helpers
-#   3. .framework bundles (deepest-path first via `sort -r`)
-#   4. main executable (with entitlements)
-#   5. outer .app bundle (with entitlements)
-#
-# --deep is intentionally NOT used: Qt's QtWebEngineCore.framework has
-# a non-standard Versions/ layout that causes --deep to fail on macOS 15.
-
-_SIGN_ID="${SIGN_ID:--}"          # use "-" (ad-hoc) when no Developer ID
-_ENTITLEMENTS="packaging/macos/entitlements.plist"
-_OPTS=""
-[[ -n "$SIGN_ID" ]] && _OPTS="--options runtime"
-
 echo ""
 if [[ -n "$SIGN_ID" ]]; then
     echo "▶ Code signing with: $SIGN_ID"
 else
-    echo "▶ Ad-hoc signing with entitlements (disable-library-validation)…"
+    echo "▶ Ad-hoc signing with entitlements"
 fi
 
-# Strategy: we do NOT sign .framework bundles because the Qt framework
-# layout inside a PyInstaller COLLECT bundle has partial/empty Resources
-# directories that cause codesign to leave broken _CodeSignature symlinks,
-# which hdiutil cannot read.
-#
-# This is safe because the main executable embeds
-# com.apple.security.cs.disable-library-validation, so macOS skips
-# signature checks on loaded dylibs entirely.
-#
-# Order: (1) individual binaries, (2) main exe with entitlements, (3) bundle.
-
-# 1. Sign all .so and .dylib files (not inside .framework to avoid sealing issues)
-find "$DIST_APP/Contents" \( -name "*.so" -o -name "*.dylib" \) \
-    ! -path "*/.framework/*" ! -path "*/Versions/*" | \
-while read -r f; do
-    codesign --force --sign "$_SIGN_ID" $_OPTS "$f" 2>/dev/null || true
-done
-
-# 2. Sign dylibs that ARE inside frameworks but only at the leaf level
-find "$DIST_APP/Contents/Frameworks" -name "*.dylib" | \
-while read -r f; do
-    codesign --force --sign "$_SIGN_ID" $_OPTS "$f" 2>/dev/null || true
-done
-
-# 3. Sign any nested .app helpers (e.g. QtWebEngineProcess.app)
-find "$DIST_APP/Contents" -name "*.app" -mindepth 2 | sort -r | while read -r a; do
-    codesign --force --sign "$_SIGN_ID" $_OPTS \
-        --entitlements "$_ENTITLEMENTS" "$a" 2>/dev/null || true
-done
-
-# 4. Sign the main executable with entitlements
-codesign --force --sign "$_SIGN_ID" $_OPTS \
-    --entitlements "$_ENTITLEMENTS" \
-    "$DIST_APP/Contents/MacOS/DockMeow"
-
-# 5. Sign the outer .app bundle with entitlements (no --deep to avoid framework issues)
-codesign --force --sign "$_SIGN_ID" $_OPTS \
-    --entitlements "$_ENTITLEMENTS" \
-    "$DIST_APP"
-
-echo "  Entitlements embedded: $(codesign -d --entitlements - \
-    "$DIST_APP/Contents/MacOS/DockMeow" 2>/dev/null | \
-    grep -c 'disable-library-validation') disable-library-validation key(s)"
+SIGN_ID="${SIGN_ID:--}" packaging/macos/sign_app.sh "$DIST_APP"
 
 # ── Step 4: DMG ──────────────────────────────────────────────────────────────
 echo ""
