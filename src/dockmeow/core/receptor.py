@@ -603,28 +603,16 @@ def prepare_receptor(
                 "无法创建受体准备临时文件。",
             ) from copy_exc
 
-    fixed_text = fixed_pdb.read_text(encoding="utf-8", errors="replace")
-    cleaned_text, n_waters = _strip_hetatm(fixed_text, keep=keep_hetero)
-    clean_pdb.write_text(cleaned_text, encoding="utf-8")
-
-    chains, n_residues = _get_chains_and_residues(cleaned_text)
-
-    meeko_warnings = _pdb_to_pdbqt(clean_pdb, output_pdbqt, cb, original_pdb=raw_copy)
-    warnings.extend(meeko_warnings)
-
-    # Auto-retry without addMissingAtoms if PDBQT came out empty (meeko's
-    # template matching fails when PDBFixer over-extends a structure).  Keep
-    # retry progress monotonic so the GUI does not appear to restart stage 1.
-    if (
-        used_pdbfixer
-        and add_missing_atoms
-        and output_pdbqt.exists()
-        and output_pdbqt.stat().st_size == 0
-    ):
-        _log.warning("PDBQT empty after first attempt; retrying without addMissingAtoms")
-        warnings.append("PDBQT 首次生成为空，已自动以「不补全缺失原子」模式重试。")
+    # Auto-retry without addMissingAtoms if meeko cannot digest the PDBFixer-
+    # extended structure or if PDBQT came out empty.  Keep retry progress
+    # monotonic so the GUI does not appear to restart stage 1.
+    def retry_without_missing_atoms(reason: str) -> tuple[list[str], str, int]:
+        _log.warning("PDBQT first attempt failed; retrying without addMissingAtoms: %s", reason)
+        warnings.append(
+            f"PDBQT 首次生成失败（{reason}），已自动以「不补全缺失原子」模式重试。"
+        )
         if cb:
-            cb("受体准备", 92, "首次 PDBQT 为空，正在使用兼容模式重试…")
+            cb("受体准备", 92, "首次 PDBQT 失败，正在使用兼容模式重试…")
 
         def retry_cb(stage: str, pct: int, msg: str) -> None:
             if cb is None:
@@ -634,13 +622,38 @@ def prepare_receptor(
 
         _run_pdbfixer(raw_copy, fixed_pdb, False, ph, retry_cb if cb else None)
         fixed_text2 = fixed_pdb.read_text(encoding="utf-8", errors="replace")
-        cleaned_text2, _ = _strip_hetatm(fixed_text2, keep=keep_hetero)
+        cleaned_text2, n_waters2 = _strip_hetatm(fixed_text2, keep=keep_hetero)
         clean_pdb.write_text(cleaned_text2, encoding="utf-8")
         meeko_warnings2 = _pdb_to_pdbqt(
             clean_pdb, output_pdbqt, retry_cb if cb else None, original_pdb=raw_copy
         )
+        return meeko_warnings2, cleaned_text2, n_waters2
+
+    fixed_text = fixed_pdb.read_text(encoding="utf-8", errors="replace")
+    cleaned_text, n_waters = _strip_hetatm(fixed_text, keep=keep_hetero)
+    clean_pdb.write_text(cleaned_text, encoding="utf-8")
+
+    chains, n_residues = _get_chains_and_residues(cleaned_text)
+
+    try:
+        meeko_warnings = _pdb_to_pdbqt(clean_pdb, output_pdbqt, cb, original_pdb=raw_copy)
+        warnings.extend(meeko_warnings)
+    except ReceptorPreparationError as exc:
+        if not (used_pdbfixer and add_missing_atoms):
+            raise
+        meeko_warnings2, retry_text, n_waters = retry_without_missing_atoms(str(exc))
         warnings.extend(meeko_warnings2)
-        chains, n_residues = _get_chains_and_residues(cleaned_text2)
+        chains, n_residues = _get_chains_and_residues(retry_text)
+    else:
+        if (
+            used_pdbfixer
+            and add_missing_atoms
+            and output_pdbqt.exists()
+            and output_pdbqt.stat().st_size == 0
+        ):
+            meeko_warnings2, retry_text, n_waters = retry_without_missing_atoms("生成的 PDBQT 为空")
+            warnings.extend(meeko_warnings2)
+            chains, n_residues = _get_chains_and_residues(retry_text)
 
     if cb:
         cb("受体准备", 100, "受体准备完成。")
