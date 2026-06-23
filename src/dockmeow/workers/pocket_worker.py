@@ -26,7 +26,11 @@ class PocketWorker(QThread):
     def run(self) -> None:
         try:
             self.progress.emit("pocket", 10, "检测结合口袋…")
-            pockets = detect_pockets(self._receptor_info, self._pdb_path)
+            original_pdb = (
+                getattr(self._receptor_info, "original_pdb_path", None)
+                or self._pdb_path
+            )
+            pockets = detect_pockets(self._receptor_info, original_pdb)
             self.progress.emit("pocket", 100, "口袋检测完成")
             self.finished_ok.emit(pockets)
         except DockMeowError as e:

@@ -13,6 +13,7 @@ No PySide6 imports permitted in this module.
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
@@ -29,6 +30,12 @@ _BOX_SIZE_MIN = 15.0
 _BOX_SIZE_MAX = 30.0
 _COCRYSTAL_BOX = 22.5
 _FPOCKET_PADDING = 5.0
+_POCKET_FILE_RE = re.compile(r"pocket(?P<number>\d+)_atm\.(?:pdb|pqr)$", re.IGNORECASE)
+_POCKET_HEADER_RE = re.compile(r"^\s*Pocket\s+(?P<number>\d+)\s*:", re.IGNORECASE)
+_POCKET_SCORE_RE = re.compile(
+    r"^\s*Score\s*:\s*(?P<score>[-+]?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -205,30 +212,59 @@ def _run_fpocket(receptor_pdb: Path, work_dir: Path) -> list[Pocket]:
     # fpocket 4.x writes <stem>_out/pockets/pocket*_atm.pdb (individual pocket files)
     # Older versions placed them directly in <stem>_out/ — check both layouts.
     if out_dir.exists():
-        pqr_files = sorted(out_dir.rglob("pocket*_atm.pdb"))
+        pqr_files = list(out_dir.rglob("pocket*_atm.pdb"))
         if not pqr_files:
-            pqr_files = sorted(out_dir.rglob("pocket*_atm.pqr"))
+            pqr_files = list(out_dir.rglob("pocket*_atm.pqr"))
     else:
         pqr_files = []
 
+    pqr_files.sort(key=_pocket_file_number)
+    scores = _parse_fpocket_scores(out_dir / f"{local_pdb.stem}_info.txt")
+
     pockets: list[Pocket] = []
-    for i, pqr in enumerate(pqr_files[:3], start=1):
+    for pqr in pqr_files[:3]:
         coords = _parse_pdb_coords(pqr)
         if not coords:
             continue
+        pocket_number = _pocket_file_number(pqr)
         center, size = _box_from_coords(coords, _FPOCKET_PADDING)
         pockets.append(
             Pocket(
-                pocket_id=i,
+                pocket_id=pocket_number,
                 center=center,
                 size=size,
-                score=float(len(coords)),  # rough proxy; fpocket score parsing optional
+                score=scores.get(pocket_number, 0.0),
                 source="fpocket",
-                label=f"口袋 {i}" + ("（推荐）" if i == 1 else ""),
+                label=f"口袋 {pocket_number}",
             )
         )
 
     return pockets
+
+
+def _pocket_file_number(path: Path) -> int:
+    match = _POCKET_FILE_RE.search(path.name)
+    return int(match.group("number")) if match else 10**9
+
+
+def _parse_fpocket_scores(info_path: Path) -> dict[int, float]:
+    """Read the native fpocket Score for each numbered pocket."""
+    try:
+        lines = info_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return {}
+
+    scores: dict[int, float] = {}
+    current_pocket: int | None = None
+    for line in lines:
+        header = _POCKET_HEADER_RE.match(line)
+        if header:
+            current_pocket = int(header.group("number"))
+            continue
+        score = _POCKET_SCORE_RE.match(line)
+        if current_pocket is not None and score:
+            scores[current_pocket] = float(score.group("score"))
+    return scores
 
 
 def _parse_pdb_coords(path: Path) -> list[tuple[float, float, float]]:
@@ -289,6 +325,9 @@ def detect_pockets(
     """
     pockets: list[Pocket] = []
 
+    if original_pdb is None:
+        original_pdb = getattr(receptor, "original_pdb_path", None)
+
     # --- Priority 1: co-crystal ligand ---
     if original_pdb is not None and receptor.hetero_groups:
         try:
@@ -317,6 +356,8 @@ def detect_pockets(
         tmp_work = Path(tmpdir)
         try:
             fp_pockets = _run_fpocket(receptor.pdb_path, tmp_work)
+            if fp_pockets and not pockets:
+                fp_pockets[0].label += "（推荐）"
             pockets.extend(fp_pockets)
             _log.info("fpocket returned %d pockets", len(fp_pockets))
         except FileNotFoundError:

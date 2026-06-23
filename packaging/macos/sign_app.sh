@@ -40,6 +40,23 @@ if [[ -d "$WEBENGINE_FRAMEWORK" ]]; then
     fi
 fi
 
+# PyInstaller rewrites Qt framework install names to flat @rpath entries and
+# places matching symlinks in Contents/Frameworks. Once Helpers is normalized
+# under Versions/A, its generated rpath is two levels too shallow, so the
+# renderer process cannot locate QtWebEngineCore and every WebEngine page fails.
+WEBENGINE_PROCESS="$VERSIONED_HELPERS/QtWebEngineProcess.app/Contents/MacOS/QtWebEngineProcess"
+WEBENGINE_RPATH="@loader_path/../../../../../../../../../.."
+if [[ -f "$WEBENGINE_PROCESS" ]]; then
+    if ! otool -l "$WEBENGINE_PROCESS" | grep -Fq "path $WEBENGINE_RPATH "; then
+        install_name_tool -add_rpath "$WEBENGINE_RPATH" "$WEBENGINE_PROCESS"
+    fi
+    if ! otool -l "$WEBENGINE_PROCESS" | grep -Fq "path $WEBENGINE_RPATH "; then
+        echo "ERROR: QtWebEngineProcess rpath repair failed" >&2
+        exit 1
+    fi
+    echo "QtWebEngineProcess rpath repaired"
+fi
+
 SIGN_ARGS=(--force --deep --sign "$SIGN_ID")
 if [[ "$SIGN_ID" != "-" ]]; then
     SIGN_ARGS+=(--options runtime --timestamp)

@@ -644,8 +644,10 @@ class _WebEngineViewer3D(QWebEngineView):
         self._bg_color: str = self.DEFAULT_BG
         self._capture_token = 0
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setStyleSheet(f"background: {self.DEFAULT_BG};")
         self.setAccessibleName("DockMeow 3D preview")
         self.setAccessibleDescription("Molecular preview rendered by Qt WebEngine")
+        self.page().setBackgroundColor(QColor(self.DEFAULT_BG))
         self.loadFinished.connect(self._on_load_finished)
         # Use a data URL base so that local resource requests are allowed
         self.setHtml(_HTML, QUrl("qrc:/"))

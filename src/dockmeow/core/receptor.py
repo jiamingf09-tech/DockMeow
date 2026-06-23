@@ -2,9 +2,13 @@
 
 Flow:
     input PDB → copy to work_dir/safe_name
-             → PDBFixer: add missing residues/atoms, protonate at given pH
+             → PDBFixer: standardise residues and protonate at given pH
              → strip waters / HETATM (unless kept by caller)
              → meeko Polymer.from_pdb_string() → PDBQTWriterLegacy.write_from_polymer()
+
+The default path deliberately preserves the experimental heavy-atom model.
+PDBFixer's heavy-atom completion is available as an opt-in repair mode because
+it can create chemically invalid coordinates for otherwise usable structures.
 
 No PySide6 imports permitted in this module.
 """
@@ -12,6 +16,7 @@ No PySide6 imports permitted in this module.
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -104,60 +109,12 @@ class ReceptorInfo:
     waters_removed: int = 0
     warnings: list[str] = field(default_factory=list)
     nucleic_acid_chains: list[str] = field(default_factory=list)  # DNA/RNA chains detected
+    original_pdb_path: Path | None = None
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-def _strip_pdbfixer_added_atoms(fixed_pdb_text: str, original_pdb: Path) -> str:
-    """Return a version of fixed_pdb_text that keeps only atoms present in the
-    original PDB (by chain/residue/atom-name key).
-
-    Used as a fallback when PDBFixer's addMissingAtoms places heavy atoms in
-    positions that trigger valence errors in meeko's DetermineConnectivity
-    (e.g. cis-proline CD too close to the preceding residue's carbonyl O).
-    """
-    try:
-        orig_text = original_pdb.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return fixed_pdb_text
-
-    orig_keys: set[tuple[str, str, int, str]] = set()
-    for line in orig_text.splitlines():
-        if not line.startswith(("ATOM", "HETATM")) or len(line) < 27:
-            continue
-        name = line[12:16].strip()
-        chain = line[21].strip() or " "
-        try:
-            resi = int(line[22:26].strip())
-        except ValueError:
-            continue
-        resname = line[17:20].strip()
-        orig_keys.add((chain, resname, resi, name))
-
-    out: list[str] = []
-    for line in fixed_pdb_text.splitlines(keepends=True):
-        if not line.startswith(("ATOM", "HETATM")) or len(line) < 27:
-            out.append(line)
-            continue
-        name = line[12:16].strip()
-        chain = line[21].strip() or " "
-        try:
-            resi = int(line[22:26].strip())
-        except ValueError:
-            out.append(line)
-            continue
-        resname = line[17:20].strip()
-        # Keep H atoms (meeko adds its own; no H in original RCSB PDB anyway)
-        # Keep only atoms that existed in the original structure
-        elem = line[76:78].strip() if len(line) >= 78 else ""
-        if elem == "H" or (chain, resname, resi, name) in orig_keys:
-            out.append(line)
-        # else: skip PDBFixer-added heavy atom
-
-    return "".join(out)
-
 
 def _parse_hetero_groups(pdb_text: str) -> list[HeteroGroup]:
     """Extract HETATM groups from raw PDB text."""
@@ -298,11 +255,12 @@ def _run_pdbfixer(
             "请从 RCSB PDB 重新下载标准格式文件，或在 PyMOL 中另存为 PDB。",
         ) from exc
 
-    try:
-        fixer.findMissingResidues()
-    except Exception as exc:
-        _log.warning("PDBFixer findMissingResidues failed (%s), continuing", exc)
-        warnings.append(f"缺失残基检测失败（{exc}），已跳过。")
+    if add_missing_atoms:
+        try:
+            fixer.findMissingResidues()
+        except Exception as exc:
+            _log.warning("PDBFixer findMissingResidues failed (%s), continuing", exc)
+            warnings.append(f"缺失残基检测失败（{exc}），已跳过。")
 
     try:
         fixer.findNonstandardResidues()
@@ -326,13 +284,13 @@ def _run_pdbfixer(
         _log.warning("PDBFixer removeHeterogens failed (%s), skipping", exc)
         warnings.append(f"杂原子移除失败（{exc}），已跳过。")
 
-    try:
-        fixer.findMissingAtoms()
-        if add_missing_atoms:
+    if add_missing_atoms:
+        try:
+            fixer.findMissingAtoms()
             fixer.addMissingAtoms()
-    except Exception as exc:
-        _log.warning("PDBFixer addMissingAtoms failed (%s), skipping", exc)
-        warnings.append(f"缺失原子补全失败（{exc}），已跳过。")
+        except Exception as exc:
+            _log.warning("PDBFixer addMissingAtoms failed (%s), skipping", exc)
+            warnings.append(f"缺失原子补全失败（{exc}），已跳过。")
 
     try:
         fixer.addMissingHydrogens(ph)
@@ -371,11 +329,58 @@ def _run_pdbfixer(
     return warnings
 
 
+_RESIDUE_KEY_RE = re.compile(r"residue_key\s*=\s*['\"]?([^'\"\s,;]+)")
+
+
+def _summarize_meeko_warnings(messages: list[str], limit: int = 4) -> list[str]:
+    """Collapse noisy Meeko logs into a bounded set of user-facing messages."""
+    residue_keys: set[str] = set()
+    other_messages: list[str] = []
+    seen: set[str] = set()
+
+    for raw_message in messages:
+        message = " ".join(str(raw_message).split())
+        if not message or "Lone hydrogen is ignored" in message:
+            continue
+
+        keys = _RESIDUE_KEY_RE.findall(message)
+        if keys and any(word in message.lower() for word in ("template", "residue")):
+            residue_keys.update(keys)
+            continue
+
+        if message in seen:
+            continue
+        seen.add(message)
+        if len(message) > 220:
+            message = message[:217].rstrip() + "..."
+        other_messages.append(message)
+
+    result: list[str] = []
+    if residue_keys:
+        ordered = sorted(residue_keys)
+        examples = "、".join(ordered[:5])
+        suffix = "等" if len(ordered) > 5 else ""
+        result.append(
+            f"Meeko 已跳过 {len(ordered)} 个无法匹配模板的残基"
+            f"（示例：{examples}{suffix}）；这些残基不会参与对接。"
+        )
+
+    remaining = max(0, limit - len(result))
+    if len(other_messages) > remaining and remaining > 0:
+        visible_count = remaining - 1
+        result.extend(other_messages[:visible_count])
+        result.append(
+            f"另有 {len(other_messages) - visible_count} 条技术性提示已收起。"
+        )
+    else:
+        result.extend(other_messages[:remaining])
+    return result[:limit]
+
+
 def _pdb_to_pdbqt(
     input_pdb: Path,
     output_pdbqt: Path,
     cb: Callable | None,
-    original_pdb: Path | None = None,
 ) -> list[str]:
     """Convert PDB to PDBQT using meeko Polymer API.
 
@@ -383,10 +388,8 @@ def _pdb_to_pdbqt(
         input_pdb:    Fixed/cleaned PDB to convert.
         output_pdbqt: Destination PDBQT path.
         cb:           Progress callback.
-        original_pdb: Raw PDB before PDBFixer (used for fallback atom filtering).
-
     Returns:
-        List of warning strings emitted by meeko for skipped residues.
+        A bounded summary of warnings emitted by meeko for skipped residues.
     """
     import logging as _logging
 
@@ -441,35 +444,12 @@ def _pdb_to_pdbqt(
             "meeko 无法解析受体结构，可能含有不标准残基。",
             "请检查 PDB 文件中是否有非标准氨基酸，尝试手动删除后重试。",
         ) from exc
-    except Exception as first_exc:
-        # Fallback: PDBFixer's addMissingAtoms can place atoms (e.g. cis-Pro CD) within
-        # bonding distance of neighbouring residue atoms, triggering a valence error in
-        # meeko's DetermineConnectivity.  Retry with heavy-atom-only PDB stripped of any
-        # atom added by PDBFixer (identified as no element in the original structure).
+    except Exception as exc:
         _meeko_log.removeHandler(_capture)
-        _meeko_log.addHandler(_capture)
-        try:
-            pdb_heavy = _strip_pdbfixer_added_atoms(pdb_text, original_pdb or input_pdb)
-            _log.warning(
-                "meeko first attempt failed (%s); retrying with heavy-atom-only PDB",
-                first_exc,
-            )
-            polymer = Polymer.from_pdb_string(
-                pdb_heavy,
-                templates,
-                mk_prep,
-                allow_bad_res=True,
-                default_altloc="A",
-            )
-            meeko_warnings.append(
-                f"受体 PDBQT 生成时遇到问题（{first_exc}），已跳过 PDBFixer 新增原子重试。"
-            )
-        except Exception as exc:
-            _meeko_log.removeHandler(_capture)
-            raise ReceptorPreparationError(
-                f"meeko Polymer unexpected error: {exc}",
-                "受体 PDBQT 生成失败。",
-            ) from exc
+        raise ReceptorPreparationError(
+            f"meeko Polymer unexpected error: {exc}",
+            "受体 PDBQT 生成失败。",
+        ) from exc
     finally:
         _meeko_log.removeHandler(_capture)
 
@@ -486,7 +466,7 @@ def _pdb_to_pdbqt(
     if cb:
         cb("受体准备", 90, "PDBQT 生成完成。")
 
-    return meeko_warnings
+    return _summarize_meeko_warnings(meeko_warnings)
 
 
 def _get_chains_and_residues(pdb_text: str) -> tuple[list[str], int]:
@@ -508,6 +488,33 @@ def _get_chains_and_residues(pdb_text: str) -> tuple[list[str], int]:
     return sorted(chains), len(seen_residues)
 
 
+def _validate_pdbqt_coverage(source_pdb_text: str, output_pdbqt: Path) -> None:
+    """Reject empty or catastrophically incomplete receptor conversions."""
+    _source_chains, expected_residues = _get_chains_and_residues(source_pdb_text)
+    try:
+        pdbqt_text = output_pdbqt.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise ReceptorPreparationError(
+            f"Cannot read generated receptor PDBQT: {exc}",
+            "受体 PDBQT 生成失败。",
+        ) from exc
+
+    _output_chains, converted_residues = _get_chains_and_residues(pdbqt_text)
+    if converted_residues == 0:
+        raise ReceptorPreparationError(
+            "Generated receptor PDBQT contains no ATOM records",
+            "生成的受体 PDBQT 不包含有效原子。",
+        )
+
+    coverage = converted_residues / max(1, expected_residues)
+    if expected_residues >= 20 and coverage < 0.8:
+        raise ReceptorPreparationError(
+            "Generated receptor PDBQT is incomplete: "
+            f"{converted_residues}/{expected_residues} residues ({coverage:.1%})",
+            "生成的受体 PDBQT 不完整，已停止使用该结果。",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -517,7 +524,7 @@ def prepare_receptor(
     work_dir: Path,
     keep_hetero: list[tuple[str, str, int]] | None = None,
     remove_waters: bool = True,
-    add_missing_atoms: bool = True,
+    add_missing_atoms: bool = False,
     ph: float = 7.4,
     progress_callback: Callable[[str, int, str], None] | None = None,
     strip_nucleic_acids: bool = False,
@@ -529,7 +536,8 @@ def prepare_receptor(
         work_dir:             Directory for intermediate and output files.
         keep_hetero:          List of (resname, chain, resi) tuples to preserve.
         remove_waters:        Strip HOH records when True.
-        add_missing_atoms:    Run PDBFixer addMissingAtoms / addMissingHydrogens.
+        add_missing_atoms:    Opt in to PDBFixer heavy-atom/residue completion.
+                              Hydrogens are added in both modes.
         ph:                   pH value passed to PDBFixer protonation.
         progress_callback:    Called as ``cb(stage, percent, message)``.
         strip_nucleic_acids:  If True, remove DNA/RNA chains before PDBFixer.
@@ -609,7 +617,8 @@ def prepare_receptor(
     def retry_without_missing_atoms(reason: str) -> tuple[list[str], str, int]:
         _log.warning("PDBQT first attempt failed; retrying without addMissingAtoms: %s", reason)
         warnings.append(
-            f"PDBQT 首次生成失败（{reason}），已自动以「不补全缺失原子」模式重试。"
+            "检测到补全后的结构存在化学价态或完整性冲突，"
+            "已自动改用兼容模式完成准备。"
         )
         if cb:
             cb("受体准备", 92, "首次 PDBQT 失败，正在使用兼容模式重试…")
@@ -620,14 +629,17 @@ def prepare_receptor(
             mapped = 92 + max(0, min(100, int(pct))) * 7 // 100
             cb(stage, mapped, msg)
 
-        _run_pdbfixer(raw_copy, fixed_pdb, False, ph, retry_cb if cb else None)
+        retry_warnings = _run_pdbfixer(
+            raw_copy, fixed_pdb, False, ph, retry_cb if cb else None
+        )
         fixed_text2 = fixed_pdb.read_text(encoding="utf-8", errors="replace")
         cleaned_text2, n_waters2 = _strip_hetatm(fixed_text2, keep=keep_hetero)
         clean_pdb.write_text(cleaned_text2, encoding="utf-8")
         meeko_warnings2 = _pdb_to_pdbqt(
-            clean_pdb, output_pdbqt, retry_cb if cb else None, original_pdb=raw_copy
+            clean_pdb, output_pdbqt, retry_cb if cb else None
         )
-        return meeko_warnings2, cleaned_text2, n_waters2
+        _validate_pdbqt_coverage(cleaned_text2, output_pdbqt)
+        return retry_warnings + meeko_warnings2, cleaned_text2, n_waters2
 
     fixed_text = fixed_pdb.read_text(encoding="utf-8", errors="replace")
     cleaned_text, n_waters = _strip_hetatm(fixed_text, keep=keep_hetero)
@@ -636,7 +648,8 @@ def prepare_receptor(
     chains, n_residues = _get_chains_and_residues(cleaned_text)
 
     try:
-        meeko_warnings = _pdb_to_pdbqt(clean_pdb, output_pdbqt, cb, original_pdb=raw_copy)
+        meeko_warnings = _pdb_to_pdbqt(clean_pdb, output_pdbqt, cb)
+        _validate_pdbqt_coverage(cleaned_text, output_pdbqt)
         warnings.extend(meeko_warnings)
     except ReceptorPreparationError as exc:
         if not (used_pdbfixer and add_missing_atoms):
@@ -644,16 +657,6 @@ def prepare_receptor(
         meeko_warnings2, retry_text, n_waters = retry_without_missing_atoms(str(exc))
         warnings.extend(meeko_warnings2)
         chains, n_residues = _get_chains_and_residues(retry_text)
-    else:
-        if (
-            used_pdbfixer
-            and add_missing_atoms
-            and output_pdbqt.exists()
-            and output_pdbqt.stat().st_size == 0
-        ):
-            meeko_warnings2, retry_text, n_waters = retry_without_missing_atoms("生成的 PDBQT 为空")
-            warnings.extend(meeko_warnings2)
-            chains, n_residues = _get_chains_and_residues(retry_text)
 
     if cb:
         cb("受体准备", 100, "受体准备完成。")
@@ -667,6 +670,7 @@ def prepare_receptor(
         waters_removed=n_waters,
         warnings=warnings,
         nucleic_acid_chains=na_chains,
+        original_pdb_path=raw_copy,
     )
     _log.info(
         "Receptor prepared: %s | chains=%s residues=%d na_chains=%s",

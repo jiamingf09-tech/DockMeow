@@ -73,7 +73,7 @@ _STRINGS: dict[str, str] = {
 
     # --- Receptor page extra ---
     "receptor.hetero_groups": "异质残基（HETATM）",
-    "receptor.warnings": "警告",
+    "receptor.warnings": "处理提示",
     "receptor.preparing": "正在准备受体…",
 
     # --- Ligand page extra ---

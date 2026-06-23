@@ -103,6 +103,12 @@ class ResultsPage(QWidget):
 
         self._pose_list = QListWidget()
         self._pose_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self._pose_list.setWordWrap(True)
+        self._pose_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._pose_list.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self._pose_list.setUniformItemSizes(False)
         self._pose_list.currentRowChanged.connect(self._on_pose_changed)
         rl.addWidget(self._pose_list, 1)
 
@@ -160,6 +166,10 @@ class ResultsPage(QWidget):
         splitter.setStretchFactor(1, 2)
         splitter.setSizes([720, 430])
         self._splitter = splitter
+
+        # Hide Qt WebEngine's cold-start white frame and overlap viewer startup
+        # with the earlier workflow steps.
+        QTimer.singleShot(0, self._ensure_viewer)
 
     # ------------------------------------------------------------------
     def _ensure_viewer(self) -> Viewer3D:
@@ -239,7 +249,7 @@ class ResultsPage(QWidget):
             self._pose_list.addItem(
                 QListWidgetItem(
                     f"{t('results.pose')} {i + 1}    "
-                    f"{t('results.affinity')}: {s:.2f}    "
+                    f"{t('results.affinity')}: {s:.2f}\n"
                     f"{t('results.rmsd_lb')}: {lb}    "
                     f"{t('results.rmsd_ub')}: {ub}"
                 )

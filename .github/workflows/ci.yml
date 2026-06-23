@@ -76,6 +76,9 @@ jobs:
       - name: Lint
         run: python -m ruff check src/
 
+      - name: Test
+        run: python -m pytest -q
+
       # ── fpocket smoke test (Linux + macOS only; no Windows binary) ────────
       - name: fpocket smoke test
         if: runner.os != 'Windows'

@@ -421,11 +421,17 @@ def run_docking(
             "写出对接结果失败。",
         ) from exc
 
-    # Parse scores from Vina output (energy_range filters here too)
-    energies = v.energies(n_poses=config.num_modes, energy_range=config.energy_range)
-    scores = [float(e[0]) for e in energies]
-    rmsd_lb = [float(e[1]) for e in energies]
-    rmsd_ub = [float(e[2]) for e in energies]
+    # The Python binding's energies() columns are energy components, not RMSD.
+    # Parse the canonical VINA RESULT remarks written to PDBQT instead.
+    scores, rmsd_lb, rmsd_ub = _parse_vina_scores(poses_pdbqt, "")
+    if not scores:
+        energies = v.energies(
+            n_poses=config.num_modes,
+            energy_range=config.energy_range,
+        )
+        scores = [float(e[0]) for e in energies]
+        rmsd_lb = [0.0] * len(scores)
+        rmsd_ub = [0.0] * len(scores)
 
     if cb:
         cb("分子对接", 92, "转换 SDF 格式…")

@@ -95,7 +95,7 @@ def _using_native_viewer() -> bool:
         return True
     if backend in {"webengine", "webgl", "3dmol"}:
         return False
-    return sys.platform == "darwin" and getattr(sys, "frozen", False)
+    return False
 
 
 def _force_pyside_eager_import() -> None:
