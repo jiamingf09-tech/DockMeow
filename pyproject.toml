@@ -43,7 +43,7 @@ Issues = "https://github.com/jiamingf09-tech/DockMeow/issues"
 Releases = "https://github.com/jiamingf09-tech/DockMeow/releases"
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy"]
+dev = ["ruff", "mypy", "pytest>=8"]
 build = ["pyinstaller>=6.5"]
 
 [project.scripts]
