@@ -21,6 +21,8 @@ fi
 WEBENGINE_FRAMEWORK="$APP_PATH/Contents/Frameworks/PySide6/Qt/lib/QtWebEngineCore.framework"
 WEBENGINE_HELPERS="$WEBENGINE_FRAMEWORK/Helpers"
 VERSIONED_HELPERS="$WEBENGINE_FRAMEWORK/Versions/A/Helpers"
+VERSIONED_RESOURCES="$WEBENGINE_FRAMEWORK/Versions/A/Resources"
+INVALID_VERSIONED_RESOURCES="$WEBENGINE_FRAMEWORK/Versions/Resources"
 
 # PyInstaller places Helpers at the framework root. codesign requires all
 # non-symlink framework content to live under Versions/<version>.
@@ -34,10 +36,31 @@ if [[ -d "$WEBENGINE_HELPERS" && ! -L "$WEBENGINE_HELPERS" ]]; then
 fi
 
 if [[ -d "$WEBENGINE_FRAMEWORK" ]]; then
+    # PyInstaller can leave an empty Versions/Resources directory alongside
+    # Versions/A. codesign treats every direct child of Versions as a framework
+    # version, so that stray directory makes --deep --strict fail with
+    # "embedded framework contains modified or invalid version".
+    if [[ -e "$INVALID_VERSIONED_RESOURCES" || -L "$INVALID_VERSIONED_RESOURCES" ]]; then
+        if [[ -d "$INVALID_VERSIONED_RESOURCES" && ! -L "$INVALID_VERSIONED_RESOURCES" ]]; then
+            if find "$INVALID_VERSIONED_RESOURCES" -mindepth 1 -print -quit | grep -q .; then
+                mkdir -p "$VERSIONED_RESOURCES"
+                ditto "$INVALID_VERSIONED_RESOURCES" "$VERSIONED_RESOURCES"
+            fi
+        fi
+        rm -rf "$INVALID_VERSIONED_RESOURCES"
+    fi
+
     if [[ ! -L "$WEBENGINE_HELPERS" || ! -d "$VERSIONED_HELPERS" ]]; then
         echo "ERROR: QtWebEngine Helpers framework layout is invalid" >&2
         exit 1
     fi
+    while IFS= read -r version_entry; do
+        version_name="$(basename "$version_entry")"
+        if [[ "$version_name" != "A" && "$version_name" != "Current" ]]; then
+            echo "ERROR: invalid QtWebEngine framework version entry: $version_name" >&2
+            exit 1
+        fi
+    done < <(find "$WEBENGINE_FRAMEWORK/Versions" -mindepth 1 -maxdepth 1 -print)
 fi
 
 # PyInstaller rewrites Qt framework install names to flat @rpath entries and
