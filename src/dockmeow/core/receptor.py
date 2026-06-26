@@ -15,6 +15,8 @@ No PySide6 imports permitted in this module.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 import shutil
@@ -82,6 +84,8 @@ _NON_LIGAND_RESNAMES = frozenset(
 # Atoms counted to decide if a HETATM group is ligand-sized
 _LIGAND_ATOM_MIN = 5
 _LIGAND_ATOM_MAX = 150
+_RECEPTOR_CACHE_SCHEMA = 1
+_RECEPTOR_CACHE_DIRNAME = ".receptor-cache"
 
 
 @dataclass
@@ -152,6 +156,124 @@ def _parse_hetero_groups(pdb_text: str) -> list[HeteroGroup]:
             )
         )
     return result
+
+
+def _serialize_hetero_groups(groups: list[HeteroGroup]) -> list[dict[str, object]]:
+    return [
+        {
+            "resname": group.resname,
+            "chain": group.chain,
+            "resi": group.resi,
+            "n_atoms": group.n_atoms,
+            "is_water": group.is_water,
+            "is_ion": group.is_ion,
+            "is_likely_ligand": group.is_likely_ligand,
+        }
+        for group in groups
+    ]
+
+
+def _deserialize_hetero_groups(payload: list[dict[str, object]]) -> list[HeteroGroup]:
+    return [
+        HeteroGroup(
+            resname=str(item["resname"]),
+            chain=str(item["chain"]),
+            resi=int(item["resi"]),
+            n_atoms=int(item["n_atoms"]),
+            is_water=bool(item["is_water"]),
+            is_ion=bool(item["is_ion"]),
+            is_likely_ligand=bool(item["is_likely_ligand"]),
+        )
+        for item in payload
+    ]
+
+
+def _build_receptor_cache_key(
+    raw_bytes: bytes,
+    *,
+    keep_hetero: list[tuple[str, str, int]] | None,
+    remove_waters: bool,
+    add_missing_atoms: bool,
+    ph: float,
+    strip_nucleic_acids: bool,
+) -> tuple[str, str]:
+    source_sha256 = hashlib.sha256(raw_bytes).hexdigest()
+    request_payload = {
+        "schema": _RECEPTOR_CACHE_SCHEMA,
+        "source_sha256": source_sha256,
+        "keep_hetero": sorted(list(keep_hetero or [])),
+        "remove_waters": bool(remove_waters),
+        "add_missing_atoms": bool(add_missing_atoms),
+        "ph": round(float(ph), 3),
+        "strip_nucleic_acids": bool(strip_nucleic_acids),
+    }
+    request_key = hashlib.sha256(
+        json.dumps(request_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return source_sha256, request_key
+
+
+def _load_cached_receptor_info(
+    cache_dir: Path,
+    *,
+    expected_source_sha256: str,
+) -> ReceptorInfo | None:
+    meta_path = cache_dir / "metadata.json"
+    if not meta_path.exists():
+        return None
+
+    try:
+        payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if payload.get("schema") != _RECEPTOR_CACHE_SCHEMA:
+        return None
+    if payload.get("source_sha256") != expected_source_sha256:
+        return None
+
+    pdb_path = cache_dir / str(payload.get("pdb_path", ""))
+    pdbqt_path = cache_dir / str(payload.get("pdbqt_path", ""))
+    original_pdb_path = cache_dir / str(payload.get("original_pdb_path", ""))
+    if not pdb_path.exists() or not pdbqt_path.exists() or not original_pdb_path.exists():
+        return None
+
+    return ReceptorInfo(
+        pdb_path=pdb_path,
+        pdbqt_path=pdbqt_path,
+        chains=[str(item) for item in payload.get("chains", [])],
+        n_residues=int(payload.get("n_residues", 0)),
+        hetero_groups=_deserialize_hetero_groups(payload.get("hetero_groups", [])),
+        waters_removed=int(payload.get("waters_removed", 0)),
+        warnings=[str(item) for item in payload.get("warnings", [])],
+        nucleic_acid_chains=[str(item) for item in payload.get("nucleic_acid_chains", [])],
+        original_pdb_path=original_pdb_path,
+    )
+
+
+def _write_receptor_cache_metadata(
+    cache_dir: Path,
+    *,
+    source_sha256: str,
+    info: ReceptorInfo,
+) -> None:
+    payload = {
+        "schema": _RECEPTOR_CACHE_SCHEMA,
+        "source_sha256": source_sha256,
+        "pdb_path": info.pdb_path.name,
+        "pdbqt_path": info.pdbqt_path.name,
+        "original_pdb_path": info.original_pdb_path.name if info.original_pdb_path else "",
+        "chains": info.chains,
+        "n_residues": info.n_residues,
+        "hetero_groups": _serialize_hetero_groups(info.hetero_groups),
+        "waters_removed": info.waters_removed,
+        "warnings": info.warnings,
+        "nucleic_acid_chains": info.nucleic_acid_chains,
+    }
+    (cache_dir / "metadata.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _strip_hetatm(
@@ -552,29 +674,59 @@ def prepare_receptor(
     work_dir.mkdir(parents=True, exist_ok=True)
 
     stem = safe_name(input_pdb.stem)
-    raw_copy = work_dir / f"{stem}_raw.pdb"
-    fixed_pdb = work_dir / f"{stem}_fixed.pdb"
-    clean_pdb = work_dir / f"{stem}_clean.pdb"
-    output_pdbqt = work_dir / f"{stem}.pdbqt"
 
     if cb:
         cb("受体准备", 5, f"加载 {input_pdb.name}…")
 
     try:
-        shutil.copy2(input_pdb, raw_copy)
+        raw_bytes = input_pdb.read_bytes()
+    except OSError as exc:
+        raise ReceptorPreparationError(
+            f"Cannot read PDB: {exc}",
+            "无法读取 PDB 文件，请检查文件是否被占用或路径是否正确。",
+        ) from exc
+
+    raw_text = raw_bytes.decode("utf-8", errors="replace")
+    hetero_groups = _parse_hetero_groups(raw_text)
+    _log.debug("Found %d HETATM groups in %s", len(hetero_groups), input_pdb.name)
+
+    # Detect nucleic acid chains
+    na_chains = detect_nucleic_acid_chains(input_pdb)
+    warnings: list[str] = []
+
+    source_sha256, request_key = _build_receptor_cache_key(
+        raw_bytes,
+        keep_hetero=keep_hetero,
+        remove_waters=remove_waters,
+        add_missing_atoms=add_missing_atoms,
+        ph=ph,
+        strip_nucleic_acids=strip_nucleic_acids,
+    )
+    cache_dir = work_dir / _RECEPTOR_CACHE_DIRNAME / f"{stem}_{request_key[:16]}"
+    cached_info = _load_cached_receptor_info(
+        cache_dir,
+        expected_source_sha256=source_sha256,
+    )
+    if cached_info is not None:
+        if cb:
+            cb("受体准备", 20, "检测到相同受体缓存，正在复用已准备结果…")
+            cb("受体准备", 100, "受体准备完成。")
+        _log.info("Receptor cache hit: %s -> %s", input_pdb.name, cache_dir.name)
+        return cached_info
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    raw_copy = cache_dir / f"{stem}_raw.pdb"
+    fixed_pdb = cache_dir / f"{stem}_fixed.pdb"
+    clean_pdb = cache_dir / f"{stem}_clean.pdb"
+    output_pdbqt = cache_dir / f"{stem}.pdbqt"
+
+    try:
+        raw_copy.write_bytes(raw_bytes)
     except OSError as exc:
         raise ReceptorPreparationError(
             f"Cannot copy PDB: {exc}",
             "无法读取 PDB 文件，请检查文件是否被占用或路径是否正确。",
         ) from exc
-
-    raw_text = raw_copy.read_text(encoding="utf-8", errors="replace")
-    hetero_groups = _parse_hetero_groups(raw_text)
-    _log.debug("Found %d HETATM groups in %s", len(hetero_groups), input_pdb.name)
-
-    # Detect nucleic acid chains
-    na_chains = detect_nucleic_acid_chains(raw_copy)
-    warnings: list[str] = []
 
     if na_chains and strip_nucleic_acids:
         stripped_text = strip_nucleic_acid_chains(raw_text)
@@ -671,6 +823,11 @@ def prepare_receptor(
         warnings=warnings,
         nucleic_acid_chains=na_chains,
         original_pdb_path=raw_copy,
+    )
+    _write_receptor_cache_metadata(
+        cache_dir,
+        source_sha256=source_sha256,
+        info=info,
     )
     _log.info(
         "Receptor prepared: %s | chains=%s residues=%d na_chains=%s",

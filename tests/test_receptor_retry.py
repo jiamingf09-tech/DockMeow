@@ -84,6 +84,39 @@ def test_prepare_receptor_uses_fast_mode_by_default(tmp_path, monkeypatch) -> No
     assert info.warnings == []
 
 
+def test_prepare_receptor_reuses_cached_outputs(tmp_path, monkeypatch) -> None:
+    input_pdb = tmp_path / "receptor.pdb"
+    input_pdb.write_text(PDB_TEXT, encoding="utf-8")
+    fixer_calls = 0
+    pdbqt_calls = 0
+
+    def fake_run_pdbfixer(input_pdb, output_pdb, add_missing_atoms, ph, cb):
+        nonlocal fixer_calls
+        fixer_calls += 1
+        output_pdb.write_text(PDB_TEXT, encoding="utf-8")
+        return []
+
+    def fake_pdb_to_pdbqt(input_pdb, output_pdbqt, cb):
+        nonlocal pdbqt_calls
+        pdbqt_calls += 1
+        output_pdbqt.write_text(PDB_TEXT, encoding="utf-8")
+        return ["cached warning"]
+
+    monkeypatch.setattr(receptor, "_run_pdbfixer", fake_run_pdbfixer)
+    monkeypatch.setattr(receptor, "_pdb_to_pdbqt", fake_pdb_to_pdbqt)
+
+    work_dir = tmp_path / "work"
+    first = receptor.prepare_receptor(input_pdb, work_dir)
+    second = receptor.prepare_receptor(input_pdb, work_dir)
+
+    assert fixer_calls == 1
+    assert pdbqt_calls == 1
+    assert first.pdbqt_path == second.pdbqt_path
+    assert second.original_pdb_path is not None
+    assert second.original_pdb_path.exists()
+    assert second.warnings == ["cached warning"]
+
+
 def test_meeko_warning_summary_is_bounded_and_deduplicated() -> None:
     messages = ["Lone hydrogen is ignored"] * 1000
     messages += [

@@ -283,8 +283,8 @@ if IS_MACOS:
             "CFBundleName": "DockMeow",
             "CFBundleDisplayName": "一键对接",
             "CFBundleIdentifier": "com.dockmeow.app",
-            "CFBundleVersion": "2.3.3",
-            "CFBundleShortVersionString": "2.3.3",
+            "CFBundleVersion": "2.4.0",
+            "CFBundleShortVersionString": "2.4.0",
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,   # allow dark mode
             "LSMinimumSystemVersion": "13.0",
