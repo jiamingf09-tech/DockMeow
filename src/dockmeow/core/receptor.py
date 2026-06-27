@@ -312,14 +312,10 @@ def _strip_hetatm(
     return "".join(lines_out), waters_removed
 
 
-def detect_nucleic_acid_chains(pdb_path: Path) -> list[str]:
-    """Scan a PDB file and return chain IDs that contain DNA/RNA residues."""
+def _detect_nucleic_acid_chains_from_text(pdb_text: str) -> list[str]:
+    """Scan PDB text and return chain IDs that contain DNA/RNA residues."""
     na_chains: set[str] = set()
-    try:
-        text = pdb_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    for line in text.splitlines():
+    for line in pdb_text.splitlines():
         if not line.startswith(("ATOM  ", "ATOM", "HETATM")):
             continue
         if len(line) < 26:
@@ -329,6 +325,15 @@ def detect_nucleic_acid_chains(pdb_path: Path) -> list[str]:
         if resname in _NUCLEIC_RESNAMES:
             na_chains.add(chain)
     return sorted(na_chains)
+
+
+def detect_nucleic_acid_chains(pdb_path: Path) -> list[str]:
+    """Scan a PDB file and return chain IDs that contain DNA/RNA residues."""
+    try:
+        text = pdb_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return _detect_nucleic_acid_chains_from_text(text)
 
 
 def strip_nucleic_acid_chains(pdb_text: str) -> str:
@@ -452,6 +457,15 @@ def _run_pdbfixer(
 
 
 _RESIDUE_KEY_RE = re.compile(r"residue_key\s*=\s*['\"]?([^'\"\s,;]+)")
+_MEEKO_RECOVERABLE_ERROR_MARKERS = (
+    "explicit valence",
+    "updated ",
+    "deleted ",
+    "kekul",
+    "sanitize",
+    "valence",
+)
+_RESIDUE_TEMPLATES = None
 
 
 def _summarize_meeko_warnings(messages: list[str], limit: int = 4) -> list[str]:
@@ -499,6 +513,87 @@ def _summarize_meeko_warnings(messages: list[str], limit: int = 4) -> list[str]:
     return result[:limit]
 
 
+def _sanitize_pdb_for_meeko(pdb_text: str) -> tuple[str, list[str]]:
+    """Conservatively normalise PDB records for meeko rescue attempts."""
+    cleaned_lines: list[str] = []
+    seen_atoms: set[tuple[str, str, str, str, str]] = set()
+    removed_hydrogens = 0
+    removed_duplicates = 0
+    removed_altlocs = 0
+    removed_auxiliary = 0
+
+    for line in pdb_text.splitlines(keepends=True):
+        if line.startswith(("ANISOU", "CONECT", "MASTER")):
+            removed_auxiliary += 1
+            continue
+
+        if not line.startswith(("ATOM  ", "ATOM", "HETATM")):
+            cleaned_lines.append(line)
+            continue
+
+        if len(line) < 26:
+            cleaned_lines.append(line)
+            continue
+
+        atom_name = line[12:16].strip()
+        altloc = line[16].strip() if len(line) > 16 else ""
+        resname = line[17:20].strip()
+        chain = line[21].strip() or " "
+        resi = line[22:26].strip()
+        icode = line[26].strip() if len(line) > 26 else ""
+        element = line[76:78].strip().upper() if len(line) >= 78 else ""
+
+        if element == "H" or atom_name.startswith("H"):
+            removed_hydrogens += 1
+            continue
+
+        dedupe_key = (chain, resi, icode, resname, atom_name)
+        if dedupe_key in seen_atoms:
+            removed_duplicates += 1
+            continue
+
+        seen_atoms.add(dedupe_key)
+        if altloc:
+            removed_altlocs += 1
+            line = line[:16] + " " + line[17:]
+        cleaned_lines.append(line)
+
+    warnings: list[str] = []
+    if removed_hydrogens:
+        warnings.append(f"兼容模式已移除 {removed_hydrogens} 个可疑氢原子。")
+    if removed_duplicates:
+        warnings.append(f"兼容模式已跳过 {removed_duplicates} 个重复原子记录。")
+    if removed_altlocs:
+        warnings.append(f"兼容模式已规范 {removed_altlocs} 个备选构象标记。")
+    if removed_auxiliary:
+        warnings.append(f"兼容模式已忽略 {removed_auxiliary} 条辅助连接记录。")
+
+    return "".join(cleaned_lines), warnings
+
+
+def _is_recoverable_meeko_error(exc: ReceptorPreparationError) -> bool:
+    technical = exc.args[0] if exc.args else ""
+    detail = " ".join(
+        part for part in (technical, getattr(exc, "user_message", ""), getattr(exc, "suggestion", "")) if part
+    )
+    lowered = detail.lower()
+    return any(marker in lowered for marker in _MEEKO_RECOVERABLE_ERROR_MARKERS)
+
+
+def _is_valence_meeko_error(exc: ReceptorPreparationError) -> bool:
+    technical = exc.args[0] if exc.args else ""
+    return "valence" in technical.lower()
+
+
+def _get_residue_templates():
+    global _RESIDUE_TEMPLATES
+    if _RESIDUE_TEMPLATES is None:
+        from meeko import ResidueChemTemplates
+
+        _RESIDUE_TEMPLATES = ResidueChemTemplates.create_from_defaults()
+    return _RESIDUE_TEMPLATES
+
+
 def _pdb_to_pdbqt(
     input_pdb: Path,
     output_pdbqt: Path,
@@ -515,13 +610,7 @@ def _pdb_to_pdbqt(
     """
     import logging as _logging
 
-    from meeko import (
-        MoleculePreparation,
-        PDBQTWriterLegacy,
-        Polymer,
-        PolymerCreationError,
-        ResidueChemTemplates,
-    )
+    from meeko import MoleculePreparation, PDBQTWriterLegacy, Polymer, PolymerCreationError
 
     if cb:
         cb("受体准备", 70, "正在使用 meeko 生成 PDBQT…")
@@ -541,7 +630,7 @@ def _pdb_to_pdbqt(
     _meeko_log = _logging.getLogger("meeko")
     _meeko_log.addHandler(_capture)
     try:
-        templates = ResidueChemTemplates.create_from_defaults()
+        templates = _get_residue_templates()
     except Exception as exc:
         _meeko_log.removeHandler(_capture)
         raise ReceptorPreparationError(
@@ -690,8 +779,8 @@ def prepare_receptor(
     hetero_groups = _parse_hetero_groups(raw_text)
     _log.debug("Found %d HETATM groups in %s", len(hetero_groups), input_pdb.name)
 
-    # Detect nucleic acid chains
-    na_chains = detect_nucleic_acid_chains(input_pdb)
+    # Detect nucleic acid chains without re-reading the file.
+    na_chains = _detect_nucleic_acid_chains_from_text(raw_text)
     warnings: list[str] = []
 
     source_sha256, request_key = _build_receptor_cache_key(
@@ -763,52 +852,111 @@ def prepare_receptor(
                 "无法创建受体准备临时文件。",
             ) from copy_exc
 
-    # Auto-retry without addMissingAtoms if meeko cannot digest the PDBFixer-
-    # extended structure or if PDBQT came out empty.  Keep retry progress
-    # monotonic so the GUI does not appear to restart stage 1.
-    def retry_without_missing_atoms(reason: str) -> tuple[list[str], str, int]:
-        _log.warning("PDBQT first attempt failed; retrying without addMissingAtoms: %s", reason)
-        warnings.append(
-            "检测到补全后的结构存在化学价态或完整性冲突，"
-            "已自动改用兼容模式完成准备。"
-        )
-        if cb:
-            cb("受体准备", 92, "首次 PDBQT 失败，正在使用兼容模式重试…")
-
-        def retry_cb(stage: str, pct: int, msg: str) -> None:
-            if cb is None:
-                return
-            mapped = 92 + max(0, min(100, int(pct))) * 7 // 100
-            cb(stage, mapped, msg)
-
-        retry_warnings = _run_pdbfixer(
-            raw_copy, fixed_pdb, False, ph, retry_cb if cb else None
-        )
-        fixed_text2 = fixed_pdb.read_text(encoding="utf-8", errors="replace")
-        cleaned_text2, n_waters2 = _strip_hetatm(fixed_text2, keep=keep_hetero)
-        clean_pdb.write_text(cleaned_text2, encoding="utf-8")
-        meeko_warnings2 = _pdb_to_pdbqt(
-            clean_pdb, output_pdbqt, retry_cb if cb else None
-        )
-        _validate_pdbqt_coverage(cleaned_text2, output_pdbqt)
-        return retry_warnings + meeko_warnings2, cleaned_text2, n_waters2
-
     fixed_text = fixed_pdb.read_text(encoding="utf-8", errors="replace")
     cleaned_text, n_waters = _strip_hetatm(fixed_text, keep=keep_hetero)
-    clean_pdb.write_text(cleaned_text, encoding="utf-8")
+    final_text = cleaned_text
 
-    chains, n_residues = _get_chains_and_residues(cleaned_text)
+    def _write_attempt_input(pdb_text: str) -> None:
+        clean_pdb.write_text(pdb_text, encoding="utf-8")
+
+    def _run_meeko_attempt(
+        pdb_text: str,
+        *,
+        attempt_label: str,
+        attempt_cb: Callable[[str, int, str], None] | None,
+        sanitize: bool = False,
+    ) -> tuple[list[str], str]:
+        text_to_convert = pdb_text
+        local_warnings: list[str] = []
+        if sanitize:
+            text_to_convert, sanitize_warnings = _sanitize_pdb_for_meeko(pdb_text)
+            local_warnings.extend(sanitize_warnings)
+        _write_attempt_input(text_to_convert)
+        meeko_warnings = _pdb_to_pdbqt(clean_pdb, output_pdbqt, attempt_cb)
+        _validate_pdbqt_coverage(text_to_convert, output_pdbqt)
+        _log.info("Receptor meeko attempt succeeded: %s", attempt_label)
+        return local_warnings + meeko_warnings, text_to_convert
+
+    def _retry_progress(base_pct: int, span_pct: int) -> Callable[[str, int, str], None] | None:
+        if cb is None:
+            return None
+
+        def _mapped(stage: str, pct: int, msg: str) -> None:
+            bounded = max(0, min(100, int(pct)))
+            cb(stage, base_pct + bounded * span_pct // 100, msg)
+
+        return _mapped
 
     try:
-        meeko_warnings = _pdb_to_pdbqt(clean_pdb, output_pdbqt, cb)
-        _validate_pdbqt_coverage(cleaned_text, output_pdbqt)
+        meeko_warnings, final_text = _run_meeko_attempt(
+            cleaned_text,
+            attempt_label="primary",
+            attempt_cb=cb,
+        )
         warnings.extend(meeko_warnings)
     except ReceptorPreparationError as exc:
-        if not (used_pdbfixer and add_missing_atoms):
+        rescue_success = False
+        primary_valence_failure = used_pdbfixer and add_missing_atoms and _is_valence_meeko_error(exc)
+        if _is_recoverable_meeko_error(exc) and not primary_valence_failure:
+            warnings.append("检测到 meeko 解析异常，已自动启用更保守的兼容清洗重试。")
+            if cb:
+                cb("受体准备", 92, "首次 PDBQT 失败，正在执行兼容清洗重试…")
+            try:
+                meeko_warnings, final_text = _run_meeko_attempt(
+                    cleaned_text,
+                    attempt_label="sanitized-primary",
+                    attempt_cb=_retry_progress(92, 4),
+                    sanitize=True,
+                )
+                warnings.extend(meeko_warnings)
+                rescue_success = True
+            except ReceptorPreparationError as sanitize_exc:
+                exc = sanitize_exc
+        elif primary_valence_failure:
+            warnings.append("检测到补全后的结构触发 meeko 价态冲突，已直接切换到不补全原子的保守模式。")
+
+        if not rescue_success and used_pdbfixer and add_missing_atoms:
+            _log.warning(
+                "PDBQT attempt failed after addMissingAtoms; retrying without addMissingAtoms: %s",
+                exc,
+            )
+            warnings.append(
+                "检测到补全后的结构存在化学价态或完整性冲突，"
+                "已自动改用兼容模式完成准备。"
+            )
+            if cb:
+                cb("受体准备", 96, "兼容清洗仍失败，正在切换为不补全原子的保守模式…")
+
+            retry_cb = _retry_progress(96, 3)
+            retry_warnings = _run_pdbfixer(raw_copy, fixed_pdb, False, ph, retry_cb)
+            fixed_text = fixed_pdb.read_text(encoding="utf-8", errors="replace")
+            cleaned_text, n_waters = _strip_hetatm(fixed_text, keep=keep_hetero)
+
+            try:
+                meeko_warnings, final_text = _run_meeko_attempt(
+                    cleaned_text,
+                    attempt_label="retry-without-missing-atoms",
+                    attempt_cb=retry_cb,
+                )
+                warnings.extend(retry_warnings + meeko_warnings)
+                rescue_success = True
+            except ReceptorPreparationError as retry_exc:
+                if not _is_recoverable_meeko_error(retry_exc):
+                    raise
+                warnings.append("保守模式首次重试仍失败，已自动移除可疑氢/重复原子再次尝试。")
+                meeko_warnings, final_text = _run_meeko_attempt(
+                    cleaned_text,
+                    attempt_label="sanitized-retry-without-missing-atoms",
+                    attempt_cb=retry_cb,
+                    sanitize=True,
+                )
+                warnings.extend(retry_warnings + meeko_warnings)
+                rescue_success = True
+
+        if not rescue_success:
             raise
-        meeko_warnings2, retry_text, n_waters = retry_without_missing_atoms(str(exc))
-        warnings.extend(meeko_warnings2)
-        chains, n_residues = _get_chains_and_residues(retry_text)
+
+    chains, n_residues = _get_chains_and_residues(final_text)
 
     if cb:
         cb("受体准备", 100, "受体准备完成。")
