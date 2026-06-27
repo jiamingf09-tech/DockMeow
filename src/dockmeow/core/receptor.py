@@ -573,8 +573,13 @@ def _sanitize_pdb_for_meeko(pdb_text: str) -> tuple[str, list[str]]:
 
 def _is_recoverable_meeko_error(exc: ReceptorPreparationError) -> bool:
     technical = exc.args[0] if exc.args else ""
+    parts = (
+        technical,
+        getattr(exc, "user_message", ""),
+        getattr(exc, "suggestion", ""),
+    )
     detail = " ".join(
-        part for part in (technical, getattr(exc, "user_message", ""), getattr(exc, "suggestion", "")) if part
+        part for part in parts if part
     )
     lowered = detail.lower()
     return any(marker in lowered for marker in _MEEKO_RECOVERABLE_ERROR_MARKERS)
@@ -896,7 +901,11 @@ def prepare_receptor(
         warnings.extend(meeko_warnings)
     except ReceptorPreparationError as exc:
         rescue_success = False
-        primary_valence_failure = used_pdbfixer and add_missing_atoms and _is_valence_meeko_error(exc)
+        primary_valence_failure = (
+            used_pdbfixer
+            and add_missing_atoms
+            and _is_valence_meeko_error(exc)
+        )
         if _is_recoverable_meeko_error(exc) and not primary_valence_failure:
             warnings.append("检测到 meeko 解析异常，已自动启用更保守的兼容清洗重试。")
             if cb:
@@ -913,7 +922,10 @@ def prepare_receptor(
             except ReceptorPreparationError as sanitize_exc:
                 exc = sanitize_exc
         elif primary_valence_failure:
-            warnings.append("检测到补全后的结构触发 meeko 价态冲突，已直接切换到不补全原子的保守模式。")
+            warnings.append(
+                "检测到补全后的结构触发 meeko 价态冲突，"
+                "已直接切换到不补全原子的保守模式。"
+            )
 
         if not rescue_success and used_pdbfixer and add_missing_atoms:
             _log.warning(
